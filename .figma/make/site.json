@@ -1,0 +1,10 @@
+{
+  "description": "Streamline your workflow with an intuitive platform designed to enhance productivity and simplify task management for professionals.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

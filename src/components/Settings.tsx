@@ -1,0 +1,84 @@
+import type { AppUser } from '../App'
+import { IconLogOut } from './Icons'
+
+interface SettingsProps {
+  user: AppUser
+  onSignOut: () => void
+}
+
+const roleLabels: Record<string, string> = {
+  leader: 'Community Leader',
+  mayor: 'Mayor / Local Authority',
+  assistant: 'Authorised Assistant',
+  ngo: 'NGO',
+  government: 'Government / Disaster Response',
+}
+
+export default function Settings({ user, onSignOut }: SettingsProps) {
+  return (
+    <div className="p-4 md:p-6 max-w-2xl mx-auto">
+      <div className="mb-5">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Settings</h1>
+      </div>
+
+      <div className="space-y-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <h2 className="font-semibold text-gray-900 mb-4 text-sm">Account</h2>
+          <div className="space-y-0">
+            <Row label="Name" value={user.name} />
+            <Row label="Role" value={roleLabels[user.role] || user.role} />
+            <Row label="Community" value={user.community} last />
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <h2 className="font-semibold text-gray-900 mb-4 text-sm">Notifications</h2>
+          <div className="space-y-3">
+            {[
+              'Risk level changes',
+              'New assistance requests',
+              'Weather and flood alerts',
+              'Evacuation orders',
+              'Response status updates',
+            ].map(item => (
+              <label key={item} className="flex items-center justify-between cursor-pointer gap-4">
+                <span className="text-sm text-gray-700">{item}</span>
+                <input type="checkbox" defaultChecked className="accent-blue-600 w-4 h-4" />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <h2 className="font-semibold text-gray-900 mb-3 text-sm">Data Sources</h2>
+          <p className="text-sm text-gray-500 leading-relaxed mb-4">
+            Risk data is updated every 3 hours from weather and river monitoring systems.
+            Community data is updated when you save changes in the Community Information section.
+          </p>
+          <div className="space-y-1 text-xs text-gray-400">
+            <div>Last data sync: 14:32 today</div>
+            <div>Weather source: Myanmar Meteorological Department</div>
+            <div>River data: Irrigation and Water Utilisation Management Department</div>
+          </div>
+        </div>
+
+        <button
+          onClick={onSignOut}
+          className="w-full flex items-center justify-center gap-2 border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-semibold py-3 rounded-2xl text-sm transition-colors"
+        >
+          <IconLogOut size={16} />
+          Sign Out
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <div className={`flex justify-between py-2.5 text-sm ${!last ? 'border-b border-gray-100' : ''}`}>
+      <span className="text-gray-500">{label}</span>
+      <span className="font-medium text-gray-900">{value}</span>
+    </div>
+  )
+}
