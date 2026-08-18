@@ -1,5 +1,6 @@
 import type { FC } from 'react'
 import type { AppUser, Section } from '../App'
+import { useCommunity } from '../context/CommunityContext'
 import {
   IconDashboard, IconShield, IconTruck, IconMap,
   IconUsers, IconBuilding, IconSettings, IconLogOut, IconGlobe,
@@ -37,6 +38,8 @@ const roleLabels: Record<string, string> = {
 }
 
 export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: SidebarProps) {
+  const { community } = useCommunity()
+
   return (
     <div className="w-60 bg-[#1e3a5f] flex flex-col h-full text-white">
       {/* Logo */}
@@ -78,7 +81,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
         <div className="mb-3 px-1">
           <div className="text-sm font-semibold text-white leading-tight">{user.name}</div>
           <div className="text-xs text-blue-300 mt-0.5">{roleLabels[user.role] || user.role}</div>
-          <div className="text-xs text-blue-400 mt-0.5 truncate">{user.community}</div>
+          <div className="text-xs text-blue-400 mt-0.5 truncate">{community.name}</div>
         </div>
         <button
           onClick={onSignOut}

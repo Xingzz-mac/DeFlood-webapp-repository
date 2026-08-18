@@ -42,24 +42,39 @@ export function useEnvironmentalData(
   }, [])
 
   const doFetch = useCallback(
-    (lat: number, lon: number) => {
+    (lat: number, lon: number, key: string, coordinateChange: boolean) => {
       const seq = ++seqRef.current
+      if (coordinateChange) {
+        const cached = getCachedEnvData(lat, lon)
+        setData(cached)
+        setStale(cached?.stale ?? false)
+      }
       setLoading(true)
       setError(null)
 
       fetchEnvironmentalData(lat, lon)
         .then(result => {
-          if (!mountedRef.current || seq !== seqRef.current) return
+          if (!mountedRef.current || seq !== seqRef.current || result.fingerprint !== key) return
           setData(result)
-          setStale(false)
+          setStale(result.stale)
+          setError(
+            result.status === 'error'
+              ? 'Environmental sources are currently unavailable.'
+              : result.status === 'partial'
+                ? 'Some environmental sources are incomplete, cached, or unavailable.'
+                : null,
+          )
           setLoading(false)
         })
         .catch(err => {
           if (!mountedRef.current || seq !== seqRef.current) return
           const cached = loadCachedOrStale(lat, lon)
-          if (cached) {
+          if (cached?.fingerprint === key) {
             setData({ ...cached, stale: true })
             setStale(true)
+          } else {
+            setData(null)
+            setStale(false)
           }
           setError(err instanceof Error ? err.message : 'Failed to fetch environmental data')
           setLoading(false)
@@ -71,12 +86,19 @@ export function useEnvironmentalData(
   useEffect(() => {
     if (lastKeyRef.current === coordsKey) return
     lastKeyRef.current = coordsKey
-    doFetch(latitude, longitude)
+    doFetch(latitude, longitude, coordsKey, true)
   }, [coordsKey, latitude, longitude, doFetch])
 
   const refresh = useCallback(() => {
-    doFetch(latitude, longitude)
-  }, [latitude, longitude, doFetch])
+    doFetch(latitude, longitude, coordsKey, false)
+  }, [latitude, longitude, coordsKey, doFetch])
 
-  return { data, loading, error, stale, refresh }
+  const currentData = data?.fingerprint === coordsKey ? data : null
+  return {
+    data: currentData,
+    loading,
+    error,
+    stale: currentData ? stale : false,
+    refresh,
+  }
 }

@@ -1,4 +1,5 @@
 import type { AppUser } from '../App'
+import { useCommunity } from '../context/CommunityContext'
 import { IconLogOut } from './Icons'
 
 interface SettingsProps {
@@ -15,6 +16,8 @@ const roleLabels: Record<string, string> = {
 }
 
 export default function Settings({ user, onSignOut }: SettingsProps) {
+  const { community } = useCommunity()
+
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto">
       <div className="mb-5">
@@ -27,7 +30,7 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
           <div className="space-y-0">
             <Row label="Name" value={user.name} />
             <Row label="Role" value={roleLabels[user.role] || user.role} />
-            <Row label="Community" value={user.community} last />
+            <Row label="Community" value={community.name} last />
           </div>
         </div>
 
@@ -52,13 +55,13 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <h2 className="font-semibold text-gray-900 mb-3 text-sm">Data Sources</h2>
           <p className="text-sm text-gray-500 leading-relaxed mb-4">
-            Risk data is updated every 3 hours from weather and river monitoring systems.
-            Community data is updated when you save changes in the Community Information section.
+            Environmental source data is requested for the saved community coordinates.
+            No flood-risk calculation has been implemented yet.
           </p>
           <div className="space-y-1 text-xs text-gray-400">
-            <div>Last data sync: 14:32 today</div>
-            <div>Weather source: Myanmar Meteorological Department</div>
-            <div>River data: Irrigation and Water Utilisation Management Department</div>
+            <div>Weather forecasts: Open-Meteo ECMWF AIFS and IFS</div>
+            <div>Modeled river discharge: Open-Meteo Flood API (GloFAS)</div>
+            <div>Terrain elevation: Open-Meteo Elevation API</div>
           </div>
         </div>
 

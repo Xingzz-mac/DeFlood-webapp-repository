@@ -65,12 +65,12 @@ export default function SupportNetwork() {
         </button>
       </div>
 
-      {/* High risk notice */}
-      <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3.5 mb-4 flex items-start gap-3 text-sm">
-        <IconAlertTriangle size={17} className="text-red-600 shrink-0 mt-0.5" />
-        <p className="text-red-700">
-          <strong>HIGH RISK situation active.</strong>{' '}
-          Emergency requests are visible immediately to all registered NGOs and government agencies in this region.
+      {/* Prototype notice */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3.5 mb-4 flex items-start gap-3 text-sm">
+        <IconAlertTriangle size={17} className="text-gray-500 shrink-0 mt-0.5" />
+        <p className="text-gray-700">
+          <strong>Prototype only.</strong>{' '}
+          Requests created here stay in this browser interface and are not sent to external organisations.
         </p>
       </div>
 
@@ -81,7 +81,7 @@ export default function SupportNetwork() {
           <div>
             <div className="font-semibold text-green-800 text-sm">Assistance request submitted</div>
             <div className="text-sm text-green-700 mt-0.5">
-              Registered organisations have been notified. You will receive an update when the request is accepted.
+              The prototype request was added to the local list. No external organisation was notified.
             </div>
           </div>
         </div>

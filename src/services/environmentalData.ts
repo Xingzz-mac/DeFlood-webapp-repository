@@ -6,62 +6,141 @@ import type {
   SourceMetadata,
   AggregatorStatus,
 } from './types'
+import { AIFS_MODEL, IFS_MODEL } from './config'
 import { fetchAifs, fetchIfs } from './ecmwf'
 import { fetchRiverDischarge } from './glofas'
 import { fetchElevation } from './elevation'
 import { coordFingerprint, readCache, readStaleCache, writeCache } from './cache'
 
-function errorWeather(label: string, model: string, fingerprint: string, error: string): WeatherModelData {
+function errorMetadata(coordinateFingerprint: string, error: string): SourceMetadata {
   return {
-    label,
-    model,
-    horizons: [24, 48, 72].map(h => ({
-      hours: h,
-      total: null,
-      expectedHours: h,
-      validHours: 0,
-      coverage: 0,
-    })),
-    series: [],
-    metadata: {
-      status: 'error',
-      retrievedAt: new Date().toISOString(),
-      lastSuccessfulAt: null,
-      cached: false,
-      fingerprint,
-      error,
-    },
+    status: 'error',
+    retrievedAt: new Date().toISOString(),
+    lastSuccessfulAt: null,
+    cached: false,
+    coordinateFingerprint,
+    error,
   }
 }
 
-function errorRiver(fingerprint: string, error: string): RiverData {
+function errorWeather(
+  label: string,
+  model: string,
+  coordinateFingerprint: string,
+  error: string,
+): WeatherModelData {
   return {
+    label,
+    model,
+    unit: 'mm',
+    horizons: [24, 48, 72].map(hours => ({
+      hours,
+      total: null,
+      expectedHours: hours,
+      validHours: 0,
+      coverage: 0,
+      complete: false,
+    })),
+    series: [],
+    metadata: errorMetadata(coordinateFingerprint, error),
+  }
+}
+
+function errorRiver(coordinateFingerprint: string, error: string): RiverData {
+  return {
+    unit: 'm³/s',
     days: [],
     peakDischarge: null,
     peakDate: null,
     trend: 'unavailable',
-    metadata: {
-      status: 'error',
-      retrievedAt: new Date().toISOString(),
-      lastSuccessfulAt: null,
-      cached: false,
-      fingerprint,
-      error,
-    },
+    metadata: errorMetadata(coordinateFingerprint, error),
   }
 }
 
-function errorTerrain(fingerprint: string, error: string): TerrainData {
+function errorTerrain(coordinateFingerprint: string, error: string): TerrainData {
   return {
+    unit: 'm',
     elevation: null,
-    metadata: {
-      status: 'error',
-      retrievedAt: new Date().toISOString(),
-      lastSuccessfulAt: null,
-      cached: false,
-      fingerprint,
-      error,
-    },
+    metadata: errorMetadata(coordinateFingerprint, error),
+  }
+}
+
+function weatherUsable(data: WeatherModelData | undefined): data is WeatherModelData {
+  return Boolean(data?.series.some(point => point.value !== null))
+}
+
+function riverUsable(data: RiverData | undefined): data is RiverData {
+  return Boolean(data?.days.some(day => [
+    day.discharge,
+    day.mean,
+    day.median,
+    day.maximum,
+    day.p25,
+    day.p75,
+  ].some(value => value !== null)))
+}
+
+function terrainUsable(data: TerrainData | undefined): data is TerrainData {
+  return typeof data?.elevation === 'number' && Number.isFinite(data.elevation)
+}
+
+function cachedMetadata(
+  metadata: SourceMetadata,
+  coordinateFingerprint: string,
+  error: string | null,
+): SourceMetadata {
+  return {
+    ...metadata,
+    status: 'cached',
+    retrievedAt: new Date().toISOString(),
+    cached: true,
+    coordinateFingerprint,
+    error,
+  }
+}
+
+function asCachedEnvironmental(data: EnvironmentalData, stale: boolean): EnvironmentalData {
+  const coordinateFingerprint = data.fingerprint
+  const aifs = weatherUsable(data.weatherModels.aifs)
+    ? {
+        ...data.weatherModels.aifs,
+        metadata: cachedMetadata(
+          data.weatherModels.aifs.metadata,
+          coordinateFingerprint,
+          data.weatherModels.aifs.metadata.error,
+        ),
+      }
+    : data.weatherModels.aifs
+  const ifs = weatherUsable(data.weatherModels.ifs)
+    ? {
+        ...data.weatherModels.ifs,
+        metadata: cachedMetadata(
+          data.weatherModels.ifs.metadata,
+          coordinateFingerprint,
+          data.weatherModels.ifs.metadata.error,
+        ),
+      }
+    : data.weatherModels.ifs
+  const river = riverUsable(data.river)
+    ? {
+        ...data.river,
+        metadata: cachedMetadata(data.river.metadata, coordinateFingerprint, data.river.metadata.error),
+      }
+    : data.river
+  const terrain = terrainUsable(data.terrain)
+    ? {
+        ...data.terrain,
+        metadata: cachedMetadata(data.terrain.metadata, coordinateFingerprint, data.terrain.metadata.error),
+      }
+    : data.terrain
+
+  return {
+    ...data,
+    weatherModels: { aifs, ifs },
+    river,
+    terrain,
+    status: computeOverall(aifs, ifs, river, terrain),
+    stale: stale || data.stale,
   }
 }
 
@@ -71,72 +150,157 @@ function computeOverall(
   river: RiverData,
   terrain: TerrainData,
 ): AggregatorStatus {
-  const statuses: SourceMetadata['status'][] = [
+  const statuses = [
     aifs.metadata.status,
     ifs.metadata.status,
     river.metadata.status,
     terrain.metadata.status,
   ]
-  const liveCount = statuses.filter(s => s === 'live').length
-  if (liveCount === 0) return 'error'
-  if (liveCount === statuses.length) return 'live'
-  return 'partial'
+  if (statuses.every(status => status === 'live')) return 'live'
+  if (weatherUsable(aifs) || weatherUsable(ifs) || riverUsable(river) || terrainUsable(terrain)) {
+    return 'partial'
+  }
+  return 'error'
+}
+
+function reasonMessage(reason: unknown, fallback: string): string {
+  return reason instanceof Error ? reason.message : fallback
+}
+
+function currentOrCachedWeather(
+  current: WeatherModelData,
+  cached: WeatherModelData | undefined,
+  coordinateFingerprint: string,
+): WeatherModelData {
+  if (current.metadata.status !== 'error' && current.metadata.status !== 'unavailable') return current
+  if (!weatherUsable(cached)) return current
+  return {
+    ...cached,
+    metadata: cachedMetadata(cached.metadata, coordinateFingerprint, current.metadata.error),
+  }
+}
+
+function currentOrCachedRiver(
+  current: RiverData,
+  cached: RiverData | undefined,
+  coordinateFingerprint: string,
+): RiverData {
+  if (current.metadata.status !== 'error' && current.metadata.status !== 'unavailable') return current
+  if (!riverUsable(cached)) return current
+  return {
+    ...cached,
+    metadata: cachedMetadata(cached.metadata, coordinateFingerprint, current.metadata.error),
+  }
+}
+
+function currentOrCachedTerrain(
+  current: TerrainData,
+  cached: TerrainData | undefined,
+  coordinateFingerprint: string,
+): TerrainData {
+  if (current.metadata.status !== 'error' && current.metadata.status !== 'unavailable') return current
+  if (!terrainUsable(cached)) return current
+  return {
+    ...cached,
+    metadata: cachedMetadata(cached.metadata, coordinateFingerprint, current.metadata.error),
+  }
 }
 
 export function getCachedEnvData(latitude: number, longitude: number): EnvironmentalData | null {
-  return readCache<EnvironmentalData>(latitude, longitude)
+  const coordinateFingerprint = coordFingerprint(latitude, longitude)
+  const cached = readCache<EnvironmentalData>(latitude, longitude)
+  if (!cached || cached.fingerprint !== coordinateFingerprint) return null
+  return asCachedEnvironmental(cached, false)
 }
 
 export function loadCachedOrStale(latitude: number, longitude: number): EnvironmentalData | null {
-  return readStaleCache<EnvironmentalData>(latitude, longitude)
+  const coordinateFingerprint = coordFingerprint(latitude, longitude)
+  const cached = readStaleCache<EnvironmentalData>(latitude, longitude)
+  if (!cached || cached.fingerprint !== coordinateFingerprint) return null
+  return asCachedEnvironmental(cached, true)
 }
 
 export async function fetchEnvironmentalData(
   latitude: number,
   longitude: number,
+  signal?: AbortSignal,
 ): Promise<EnvironmentalData> {
-  const fingerprint = coordFingerprint(latitude, longitude)
+  const coordinateFingerprint = coordFingerprint(latitude, longitude)
+  const cached = readStaleCache<EnvironmentalData>(latitude, longitude)
+  const sameCoordinateCache = cached?.fingerprint === coordinateFingerprint ? cached : null
 
-  const [aifsResult, ifsResult, riverResult, elevResult] = await Promise.allSettled([
-    fetchAifs(latitude, longitude),
-    fetchIfs(latitude, longitude),
-    fetchRiverDischarge(latitude, longitude),
-    fetchElevation(latitude, longitude),
+  const [aifsResult, ifsResult, riverResult, elevationResult] = await Promise.allSettled([
+    fetchAifs(latitude, longitude, signal),
+    fetchIfs(latitude, longitude, signal),
+    fetchRiverDischarge(latitude, longitude, signal),
+    fetchElevation(latitude, longitude, signal),
   ])
 
-  let aifs: WeatherModelData
-  if (aifsResult.status === 'fulfilled') aifs = aifsResult.value
-  else aifs = errorWeather('ECMWF AIFS — AI Forecast', 'ecmwf_aifs025', fingerprint, aifsResult.reason instanceof Error ? aifsResult.reason.message : 'AIFS fetch failed')
+  const currentAifs = aifsResult.status === 'fulfilled'
+    ? aifsResult.value
+    : errorWeather(
+        'ECMWF AIFS — AI Forecast',
+        AIFS_MODEL,
+        coordinateFingerprint,
+        reasonMessage(aifsResult.reason, 'AIFS fetch failed'),
+      )
+  const currentIfs = ifsResult.status === 'fulfilled'
+    ? ifsResult.value
+    : errorWeather(
+        'ECMWF IFS — Physics-Based Forecast',
+        IFS_MODEL,
+        coordinateFingerprint,
+        reasonMessage(ifsResult.reason, 'IFS fetch failed'),
+      )
+  const currentRiver = riverResult.status === 'fulfilled'
+    ? riverResult.value
+    : errorRiver(
+        coordinateFingerprint,
+        reasonMessage(riverResult.reason, 'GloFAS fetch failed'),
+      )
+  const currentTerrain = elevationResult.status === 'fulfilled'
+    ? elevationResult.value
+    : errorTerrain(
+        coordinateFingerprint,
+        reasonMessage(elevationResult.reason, 'Elevation fetch failed'),
+      )
 
-  let ifs: WeatherModelData
-  if (ifsResult.status === 'fulfilled') ifs = ifsResult.value
-  else ifs = errorWeather('ECMWF IFS — Physics-Based Forecast', 'ecmwf_ifs025', fingerprint, ifsResult.reason instanceof Error ? ifsResult.reason.message : 'IFS fetch failed')
-
-  let river: RiverData
-  if (riverResult.status === 'fulfilled') river = riverResult.value
-  else river = errorRiver(fingerprint, riverResult.reason instanceof Error ? riverResult.reason.message : 'GloFAS fetch failed')
-
-  let terrain: TerrainData
-  if (elevResult.status === 'fulfilled') terrain = elevResult.value
-  else terrain = errorTerrain(fingerprint, elevResult.reason instanceof Error ? elevResult.reason.message : 'Elevation fetch failed')
-
+  const aifs = currentOrCachedWeather(
+    currentAifs,
+    sameCoordinateCache?.weatherModels.aifs,
+    coordinateFingerprint,
+  )
+  const ifs = currentOrCachedWeather(
+    currentIfs,
+    sameCoordinateCache?.weatherModels.ifs,
+    coordinateFingerprint,
+  )
+  const river = currentOrCachedRiver(
+    currentRiver,
+    sameCoordinateCache?.river,
+    coordinateFingerprint,
+  )
+  const terrain = currentOrCachedTerrain(
+    currentTerrain,
+    sameCoordinateCache?.terrain,
+    coordinateFingerprint,
+  )
   const status = computeOverall(aifs, ifs, river, terrain)
-
+  const stale = [aifs, ifs, river, terrain].some(source => source.metadata.cached)
   const data: EnvironmentalData = {
     location: { latitude, longitude },
-    fingerprint,
+    fingerprint: coordinateFingerprint,
     weatherModels: { aifs, ifs },
     river,
     terrain,
     retrievedAt: new Date().toISOString(),
     status,
-    stale: false,
+    stale,
   }
 
-  // Only cache live or partial results — never error-only results
-  if (status !== 'error') {
-    writeCache(latitude, longitude, data)
-  }
+  const hasFreshSuccess = [currentAifs, currentIfs, currentRiver, currentTerrain]
+    .some(source => source.metadata.status === 'live' || source.metadata.status === 'incomplete')
+  if (hasFreshSuccess) writeCache(latitude, longitude, data)
 
   return data
 }

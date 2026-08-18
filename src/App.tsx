@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { CommunityProvider } from './context/CommunityContext'
 import SignIn from './components/SignIn'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
@@ -28,14 +27,12 @@ export default function App() {
 
   if (!user) {
     return (
-      <CommunityProvider>
-        <SignIn
-          onSignIn={u => {
-            setUser(u)
-            setSection('dashboard')
-          }}
-        />
-      </CommunityProvider>
+      <SignIn
+        onSignIn={u => {
+          setUser(u)
+          setSection('dashboard')
+        }}
+      />
     )
   }
 
@@ -63,7 +60,6 @@ export default function App() {
   }
 
   return (
-    <CommunityProvider>
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Desktop sidebar */}
       <div className="hidden md:flex md:flex-shrink-0">
@@ -111,6 +107,5 @@ export default function App() {
         </main>
       </div>
     </div>
-    </CommunityProvider>
   )
 }

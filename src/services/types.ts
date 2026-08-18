@@ -12,7 +12,7 @@ export interface SourceMetadata {
   retrievedAt: string
   lastSuccessfulAt: string | null
   cached: boolean
-  fingerprint: string
+  coordinateFingerprint: string
   error: string | null
 }
 
@@ -22,11 +22,13 @@ export interface PrecipitationHorizon {
   expectedHours: number
   validHours: number
   coverage: number
+  complete: boolean
 }
 
 export interface WeatherModelData {
   label: string
   model: string
+  unit: 'mm'
   horizons: PrecipitationHorizon[]
   series: { time: string; value: number | null }[]
   metadata: SourceMetadata
@@ -43,6 +45,7 @@ export interface RiverDay {
 }
 
 export interface RiverData {
+  unit: 'm³/s'
   days: RiverDay[]
   peakDischarge: number | null
   peakDate: string | null
@@ -51,6 +54,7 @@ export interface RiverData {
 }
 
 export interface TerrainData {
+  unit: 'm'
   elevation: number | null
   metadata: SourceMetadata
 }

@@ -60,17 +60,71 @@ const defaultData: CommunityData = {
   locationUpdatedAt: null,
 }
 
-function migrate(stored: Partial<CommunityData>): CommunityData {
-  const merged: CommunityData = {
-    ...defaultData,
-    ...stored,
-    locationSource: stored.locationSource === 'gps' ? 'gps' : 'manual',
-    locationAccuracy: typeof stored.locationAccuracy === 'number' ? stored.locationAccuracy : null,
-    locationUpdatedAt: typeof stored.locationUpdatedAt === 'string' ? stored.locationUpdatedAt : null,
+function migrate(stored: unknown): CommunityData {
+  const saved = stored && typeof stored === 'object'
+    ? stored as Record<string, unknown>
+    : {}
+
+  const savedString = (key: keyof CommunityData, fallback: string) =>
+    typeof saved[key] === 'string' ? saved[key] as string : fallback
+  const savedCount = (key: keyof CommunityData, fallback: number) => {
+    const value = saved[key]
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : fallback
   }
-  if (typeof merged.latitude !== 'number' || !Number.isFinite(merged.latitude)) merged.latitude = defaultData.latitude
-  if (typeof merged.longitude !== 'number' || !Number.isFinite(merged.longitude)) merged.longitude = defaultData.longitude
-  return merged
+  const savedCoordinate = (key: 'latitude' | 'longitude', fallback: number, min: number, max: number) => {
+    const value = saved[key]
+    return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+      ? value
+      : fallback
+  }
+
+  const latitude = savedCoordinate('latitude', defaultData.latitude, -90, 90)
+  const longitude = savedCoordinate('longitude', defaultData.longitude, -180, 180)
+  const locationSource = saved.locationSource === 'gps' ? 'gps' : 'manual'
+  const savedAccuracy = saved.locationAccuracy
+  const locationAccuracy = locationSource === 'gps'
+    && typeof savedAccuracy === 'number'
+    && Number.isFinite(savedAccuracy)
+    && savedAccuracy >= 0
+    ? savedAccuracy
+    : null
+  const savedUpdatedAt = saved.locationUpdatedAt
+  const locationUpdatedAt = typeof savedUpdatedAt === 'string'
+    && Number.isFinite(Date.parse(savedUpdatedAt))
+    ? savedUpdatedAt
+    : null
+
+  return {
+    name: savedString('name', defaultData.name),
+    township: savedString('township', defaultData.township),
+    region: savedString('region', defaultData.region),
+    population: savedCount('population', defaultData.population),
+    children: savedCount('children', defaultData.children),
+    elderly: savedCount('elderly', defaultData.elderly),
+    disabled: savedCount('disabled', defaultData.disabled),
+    otherVulnerable: savedCount('otherVulnerable', defaultData.otherVulnerable),
+    leader: savedString('leader', defaultData.leader),
+    mayor: savedString('mayor', defaultData.mayor),
+    assistant: savedString('assistant', defaultData.assistant),
+    phone: savedString('phone', defaultData.phone),
+    volunteers: savedCount('volunteers', defaultData.volunteers),
+    cars: savedCount('cars', defaultData.cars),
+    trucks: savedCount('trucks', defaultData.trucks),
+    boats: savedCount('boats', defaultData.boats),
+    shelters: savedCount('shelters', defaultData.shelters),
+    shelterCapacity: savedCount('shelterCapacity', defaultData.shelterCapacity),
+    water: savedString('water', defaultData.water),
+    food: savedString('food', defaultData.food),
+    medicine: savedString('medicine', defaultData.medicine),
+    equipment: savedString('equipment', defaultData.equipment),
+    latitude,
+    longitude,
+    locationSource,
+    locationAccuracy,
+    locationUpdatedAt,
+  }
 }
 
 interface CommunityContextValue {
@@ -101,7 +155,7 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
     }
   }, [community])
 
-  const updateCommunity = (data: CommunityData) => setCommunity(data)
+  const updateCommunity = (data: CommunityData) => setCommunity(migrate(data))
   const setName = (name: string) => setCommunity(c => ({ ...c, name }))
 
   return (

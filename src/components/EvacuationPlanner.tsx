@@ -48,9 +48,9 @@ export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Evacuation Planner</h1>
           <p className="text-gray-500 text-sm mt-0.5">{community.name}</p>
         </div>
-        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700 font-semibold">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-700 font-semibold">
           <IconAlertTriangle size={15} />
-          HIGH RISK — Evacuation Recommended
+          Prototype only — no risk recommendation
         </div>
       </div>
 
@@ -122,10 +122,10 @@ export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps
                 </p>
               </PlanStep>
 
-              <PlanStep number={2} title="Priority 2 — High-Risk Areas" color="orange">
+              <PlanStep number={2} title="Priority 2 — Community-Defined Areas" color="orange">
                 <p>
-                  Evacuate remaining residents in low-lying areas (below 1.5m elevation) next.
-                  Use remaining vehicles and volunteers.
+                  Identify priority areas using verified local instructions before acting.
+                  This prototype does not calculate flood-risk areas or elevation thresholds.
                 </p>
               </PlanStep>
 

@@ -27,67 +27,68 @@ interface FloodResponse {
 
 function buildMetadata(
   status: SourceMetadata['status'],
-  fingerprint: string,
-  error: string | null = null,
+  coordinateFingerprint: string,
+  error: string | null,
+  successful: boolean,
 ): SourceMetadata {
   const now = new Date().toISOString()
   return {
     status,
     retrievedAt: now,
-    lastSuccessfulAt: status === 'live' ? now : null,
+    lastSuccessfulAt: successful ? now : null,
     cached: false,
-    fingerprint,
+    coordinateFingerprint,
     error,
   }
 }
 
-function firstVal(arr: (number | null)[] | undefined, index: number): number | null {
-  if (!arr || arr.length <= index) return null
-  const v = arr[index]
-  return v === null || v === undefined ? null : v
+function finiteValue(values: (number | null)[] | undefined, index: number): number | null {
+  const value = values?.[index]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function buildDays(data: FloodResponse): RiverDay[] {
-  const dates = data.daily?.time ?? []
-  return dates.map((date, i) => ({
+  const dates = (data.daily?.time ?? []).slice(0, RIVER_FORECAST_DAYS)
+  return dates.map((date, index) => ({
     date,
-    discharge: firstVal(data.daily?.river_discharge, i),
-    mean: firstVal(data.daily?.river_discharge_mean, i),
-    median: firstVal(data.daily?.river_discharge_median, i),
-    maximum: firstVal(data.daily?.river_discharge_max, i),
-    p25: firstVal(data.daily?.river_discharge_p25, i),
-    p75: firstVal(data.daily?.river_discharge_p75, i),
+    discharge: finiteValue(data.daily?.river_discharge, index),
+    mean: finiteValue(data.daily?.river_discharge_mean, index),
+    median: finiteValue(data.daily?.river_discharge_median, index),
+    maximum: finiteValue(data.daily?.river_discharge_max, index),
+    p25: finiteValue(data.daily?.river_discharge_p25, index),
+    p75: finiteValue(data.daily?.river_discharge_p75, index),
   }))
 }
 
-function computePeak(days: RiverDay[]): { peak: number | null; date: string | null } {
-  const valid = days.filter(d => d.discharge !== null)
-  if (valid.length === 0) return { peak: null, date: null }
-  let peakDay = valid[0]
-  for (const d of valid) {
-    if ((d.discharge as number) > (peakDay.discharge as number)) peakDay = d
-  }
+function computeThreeDayPeak(days: RiverDay[]): { peak: number | null; date: string | null } {
+  const usable = days.slice(0, 3).filter(
+    (day): day is RiverDay & { discharge: number } => day.discharge !== null,
+  )
+  if (usable.length === 0) return { peak: null, date: null }
+  const peakDay = usable.reduce((peak, day) => day.discharge > peak.discharge ? day : peak)
   return { peak: peakDay.discharge, date: peakDay.date }
 }
 
-function computeTrend(days: RiverDay[]): RiverTrend {
-  const valid = days.slice(0, 3).filter(d => d.discharge !== null)
-  if (valid.length < 2) return 'unavailable'
-  const series = valid.map(d => d.discharge as number)
-  const first = series[0]
-  const last = series[series.length - 1]
-  const diff = last - first
-  const threshold = Math.max(0.1, first * 0.05)
-  if (diff > threshold) return 'rising'
-  if (diff < -threshold) return 'falling'
+function computeNearTermTrend(days: RiverDay[]): RiverTrend {
+  const usable = days.slice(0, 3).filter(
+    (day): day is RiverDay & { discharge: number } => day.discharge !== null,
+  )
+  if (usable.length < 2) return 'unavailable'
+  const first = usable[0].discharge
+  const last = usable[usable.length - 1].discharge
+  const difference = last - first
+  const stableThreshold = Math.max(0.1, Math.abs(first) * 0.05)
+  if (difference > stableThreshold) return 'rising'
+  if (difference < -stableThreshold) return 'falling'
   return 'stable'
 }
 
 export async function fetchRiverDischarge(
   latitude: number,
   longitude: number,
+  signal?: AbortSignal,
 ): Promise<RiverData> {
-  const fingerprint = coordFingerprint(latitude, longitude)
+  const coordinateFingerprint = coordFingerprint(latitude, longitude)
   const params = new URLSearchParams({
     latitude: String(latitude),
     longitude: String(longitude),
@@ -95,17 +96,40 @@ export async function fetchRiverDischarge(
     forecast_days: String(RIVER_FORECAST_DAYS),
     timezone: 'auto',
   })
-  const res = await fetch(`${FLOOD_BASE}?${params}`)
-  if (!res.ok) throw new Error(`Flood API returned ${res.status}`)
-  const data: FloodResponse = await res.json()
+  const response = await fetch(`${FLOOD_BASE}?${params}`, { signal })
+  if (!response.ok) throw new Error(`Flood API returned ${response.status}`)
+  const data: FloodResponse = await response.json()
   if (data.error) throw new Error(data.reason ?? 'Flood API error')
 
   const days = buildDays(data)
-  const hasData = days.some(d => d.discharge !== null)
-  const status: SourceMetadata['status'] = hasData ? 'live' : 'unavailable'
-  const metadata = buildMetadata(status, fingerprint, hasData ? null : 'No river discharge values returned')
-  const { peak, date } = computePeak(days)
-  const trend = computeTrend(days)
+  const values = days.flatMap(day => [
+    day.discharge,
+    day.mean,
+    day.median,
+    day.maximum,
+    day.p25,
+    day.p75,
+  ])
+  const hasData = values.some(value => value !== null)
+  const complete = days.length === RIVER_FORECAST_DAYS && values.every(value => value !== null)
+  const status: SourceMetadata['status'] = !hasData
+    ? 'unavailable'
+    : complete
+      ? 'live'
+      : 'incomplete'
+  const error = !hasData
+    ? 'No finite modeled discharge values returned'
+    : complete
+      ? null
+      : 'The seven-day discharge forecast contains missing values'
+  const { peak, date } = computeThreeDayPeak(days)
 
-  return { days, peakDischarge: peak, peakDate: date, trend, metadata }
+  return {
+    unit: 'm³/s',
+    days,
+    peakDischarge: peak,
+    peakDate: date,
+    trend: computeNearTermTrend(days),
+    metadata: buildMetadata(status, coordinateFingerprint, error, hasData),
+  }
 }

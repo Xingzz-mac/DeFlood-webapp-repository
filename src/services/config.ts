@@ -11,6 +11,6 @@ export const RIVER_FORECAST_DAYS = 7
 export const MIN_COVERAGE_PCT = 90
 
 export const ENV_CACHE_TTL_MS = 60 * 60 * 1000
-export const ENV_CACHE_SCHEMA_VERSION = 2
+export const ENV_CACHE_SCHEMA_VERSION = 3
 
 export const GEO_TIMEOUT_MS = 12_000
