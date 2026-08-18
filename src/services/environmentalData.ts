@@ -1,114 +1,142 @@
-import type { EnvironmentalData, WeatherModelData, RiverData, TerrainData, SourceStatus } from './types'
-import { fetchEcmwf } from './ecmwf'
+import type {
+  EnvironmentalData,
+  WeatherModelData,
+  RiverData,
+  TerrainData,
+  SourceMetadata,
+  AggregatorStatus,
+} from './types'
+import { fetchAifs, fetchIfs } from './ecmwf'
 import { fetchRiverDischarge } from './glofas'
 import { fetchElevation } from './elevation'
+import { coordFingerprint, readCache, readStaleCache, writeCache } from './cache'
 
-const CACHE_KEY = 'deflood-env-data'
-const ONE_HOUR_MS = 60 * 60 * 1000
-
-export function getCachedEnvData(): EnvironmentalData | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as EnvironmentalData
-    if (!parsed.lastUpdated) return null
-    const age = Date.now() - new Date(parsed.lastUpdated).getTime()
-    if (age > ONE_HOUR_MS) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function cacheEnvData(data: EnvironmentalData): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data))
-  } catch {
-    // ignore
-  }
-}
-
-export function loadCachedOrStale(): EnvironmentalData | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as EnvironmentalData
-  } catch {
-    return null
-  }
-}
-
-function errorWeather(label: string): WeatherModelData {
-  return { label, precipitation24h: null, precipitation48h: null, precipitation72h: null, status: 'error' }
-}
-
-function errorRiver(): RiverData {
+function errorWeather(label: string, model: string, fingerprint: string, error: string): WeatherModelData {
   return {
-    discharge: null, mean: null, median: null,
-    maximum: null, p25: null, p75: null, trend: 'stable', status: 'error',
+    label,
+    model,
+    horizons: [24, 48, 72].map(h => ({
+      hours: h,
+      total: null,
+      expectedHours: h,
+      validHours: 0,
+      coverage: 0,
+    })),
+    series: [],
+    metadata: {
+      status: 'error',
+      retrievedAt: new Date().toISOString(),
+      lastSuccessfulAt: null,
+      cached: false,
+      fingerprint,
+      error,
+    },
   }
 }
 
-function errorTerrain(): TerrainData {
-  return { elevation: null, status: 'error' }
+function errorRiver(fingerprint: string, error: string): RiverData {
+  return {
+    days: [],
+    peakDischarge: null,
+    peakDate: null,
+    trend: 'unavailable',
+    metadata: {
+      status: 'error',
+      retrievedAt: new Date().toISOString(),
+      lastSuccessfulAt: null,
+      cached: false,
+      fingerprint,
+      error,
+    },
+  }
+}
+
+function errorTerrain(fingerprint: string, error: string): TerrainData {
+  return {
+    elevation: null,
+    metadata: {
+      status: 'error',
+      retrievedAt: new Date().toISOString(),
+      lastSuccessfulAt: null,
+      cached: false,
+      fingerprint,
+      error,
+    },
+  }
 }
 
 function computeOverall(
-  aifs: WeatherModelData, ifs: WeatherModelData,
-  river: RiverData, terrain: TerrainData,
-): 'live' | 'demo' | 'partial' | 'error' {
-  const statuses: SourceStatus[] = [aifs.status, ifs.status, river.status, terrain.status]
-  const okCount = statuses.filter(s => s === 'ok').length
-  const errorCount = statuses.filter(s => s === 'error').length
-  if (errorCount === statuses.length) return 'error'
-  if (okCount === statuses.length) return 'live'
-  if (okCount > 0) return 'partial'
-  return 'demo'
+  aifs: WeatherModelData,
+  ifs: WeatherModelData,
+  river: RiverData,
+  terrain: TerrainData,
+): AggregatorStatus {
+  const statuses: SourceMetadata['status'][] = [
+    aifs.metadata.status,
+    ifs.metadata.status,
+    river.metadata.status,
+    terrain.metadata.status,
+  ]
+  const liveCount = statuses.filter(s => s === 'live').length
+  if (liveCount === 0) return 'error'
+  if (liveCount === statuses.length) return 'live'
+  return 'partial'
+}
+
+export function getCachedEnvData(latitude: number, longitude: number): EnvironmentalData | null {
+  return readCache<EnvironmentalData>(latitude, longitude)
+}
+
+export function loadCachedOrStale(latitude: number, longitude: number): EnvironmentalData | null {
+  return readStaleCache<EnvironmentalData>(latitude, longitude)
 }
 
 export async function fetchEnvironmentalData(
   latitude: number,
   longitude: number,
 ): Promise<EnvironmentalData> {
-  const [ecmwfResult, riverResult, elevResult] = await Promise.allSettled([
-    fetchEcmwf(latitude, longitude),
+  const fingerprint = coordFingerprint(latitude, longitude)
+
+  const [aifsResult, ifsResult, riverResult, elevResult] = await Promise.allSettled([
+    fetchAifs(latitude, longitude),
+    fetchIfs(latitude, longitude),
     fetchRiverDischarge(latitude, longitude),
     fetchElevation(latitude, longitude),
   ])
 
   let aifs: WeatherModelData
+  if (aifsResult.status === 'fulfilled') aifs = aifsResult.value
+  else aifs = errorWeather('ECMWF AIFS — AI Forecast', 'ecmwf_aifs025', fingerprint, aifsResult.reason instanceof Error ? aifsResult.reason.message : 'AIFS fetch failed')
+
   let ifs: WeatherModelData
-  if (ecmwfResult.status === 'fulfilled') {
-    aifs = ecmwfResult.value.aifs
-    ifs = ecmwfResult.value.ifs
-  } else {
-    aifs = errorWeather('ECMWF AIFS — AI Forecast')
-    ifs = errorWeather('ECMWF IFS — Physics-Based Forecast')
-  }
+  if (ifsResult.status === 'fulfilled') ifs = ifsResult.value
+  else ifs = errorWeather('ECMWF IFS — Physics-Based Forecast', 'ecmwf_ifs025', fingerprint, ifsResult.reason instanceof Error ? ifsResult.reason.message : 'IFS fetch failed')
 
   let river: RiverData
-  if (riverResult.status === 'fulfilled') {
-    river = riverResult.value
-  } else {
-    river = errorRiver()
-  }
+  if (riverResult.status === 'fulfilled') river = riverResult.value
+  else river = errorRiver(fingerprint, riverResult.reason instanceof Error ? riverResult.reason.message : 'GloFAS fetch failed')
 
   let terrain: TerrainData
-  if (elevResult.status === 'fulfilled') {
-    terrain = elevResult.value
-  } else {
-    terrain = errorTerrain()
-  }
+  if (elevResult.status === 'fulfilled') terrain = elevResult.value
+  else terrain = errorTerrain(fingerprint, elevResult.reason instanceof Error ? elevResult.reason.message : 'Elevation fetch failed')
+
+  const status = computeOverall(aifs, ifs, river, terrain)
 
   const data: EnvironmentalData = {
     location: { latitude, longitude },
+    fingerprint,
     weatherModels: { aifs, ifs },
     river,
     terrain,
-    lastUpdated: new Date().toISOString(),
-    status: computeOverall(aifs, ifs, river, terrain),
+    retrievedAt: new Date().toISOString(),
+    status,
+    stale: false,
   }
 
-  cacheEnvData(data)
+  // Only cache live or partial results — never error-only results
+  if (status !== 'error') {
+    writeCache(latitude, longitude, data)
+  }
+
   return data
 }

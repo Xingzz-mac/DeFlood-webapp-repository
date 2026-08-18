@@ -25,6 +25,9 @@ export interface CommunityData {
   equipment: string
   latitude: number
   longitude: number
+  locationSource: 'manual' | 'gps'
+  locationAccuracy: number | null
+  locationUpdatedAt: string | null
 }
 
 const defaultData: CommunityData = {
@@ -52,6 +55,22 @@ const defaultData: CommunityData = {
   equipment: 'Adequate',
   latitude: 16.5,
   longitude: 95.0,
+  locationSource: 'manual',
+  locationAccuracy: null,
+  locationUpdatedAt: null,
+}
+
+function migrate(stored: Partial<CommunityData>): CommunityData {
+  const merged: CommunityData = {
+    ...defaultData,
+    ...stored,
+    locationSource: stored.locationSource === 'gps' ? 'gps' : 'manual',
+    locationAccuracy: typeof stored.locationAccuracy === 'number' ? stored.locationAccuracy : null,
+    locationUpdatedAt: typeof stored.locationUpdatedAt === 'string' ? stored.locationUpdatedAt : null,
+  }
+  if (typeof merged.latitude !== 'number' || !Number.isFinite(merged.latitude)) merged.latitude = defaultData.latitude
+  if (typeof merged.longitude !== 'number' || !Number.isFinite(merged.longitude)) merged.longitude = defaultData.longitude
+  return merged
 }
 
 interface CommunityContextValue {
@@ -67,7 +86,7 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
   const [community, setCommunity] = useState<CommunityData>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) return { ...defaultData, ...JSON.parse(stored) }
+      if (stored) return migrate(JSON.parse(stored))
     } catch {
       // fall through to default
     }

@@ -1,69 +1,88 @@
-import type { WeatherModelData, SourceStatus } from './types'
-
-const ECMWF_BASE = 'https://api.open-meteo.com/v1/ecmwf'
-
-const AIFS_MODEL = 'ecmwf_aifs025'
-const IFS_MODEL = 'ecmwf_ifs025'
+import type { WeatherModelData, PrecipitationHorizon, SourceMetadata } from './types'
+import { ECMWF_BASE, AIFS_MODEL, IFS_MODEL, FORECAST_HOURS, MIN_COVERAGE_PCT } from './config'
+import { coordFingerprint } from './cache'
 
 interface EcmwfResponse {
   hourly?: {
     time?: string[]
-    precipitation_ecmwf_aifs025?: (number | null)[]
-    precipitation_ecmwf_ifs025?: (number | null)[]
+    precipitation?: (number | null)[]
   }
   error?: boolean
   reason?: string
 }
 
-function sumFirst(values: (number | null)[], hours: number): number | null {
-  const slice = values.slice(0, hours)
-  if (slice.length < hours || slice.every(v => v === null)) return null
-  return slice.reduce<number>((acc, v) => acc + (v ?? 0), 0)
+function buildMetadata(
+  status: SourceMetadata['status'],
+  fingerprint: string,
+  error: string | null = null,
+): SourceMetadata {
+  const now = new Date().toISOString()
+  return {
+    status,
+    retrievedAt: now,
+    lastSuccessfulAt: status === 'live' ? now : null,
+    cached: false,
+    fingerprint,
+    error,
+  }
 }
 
-async function fetchBoth(
+function buildHorizons(series: { time: string; value: number | null }[]): PrecipitationHorizon[] {
+  const horizons = [24, 48, 72]
+  return horizons.map(hours => {
+    const slice = series.slice(0, hours)
+    const expectedHours = hours
+    const validHours = slice.filter(p => p.value !== null).length
+    const coverage = expectedHours > 0 ? (validHours / expectedHours) * 100 : 0
+    const meetsCoverage = coverage >= MIN_COVERAGE_PCT
+    const total = meetsCoverage
+      ? slice.reduce<number>((acc, p) => acc + (p.value ?? 0), 0)
+      : null
+    return { hours, total, expectedHours, validHours, coverage }
+  })
+}
+
+async function fetchModel(
   latitude: number,
   longitude: number,
-): Promise<{ aifs: (number | null)[]; ifs: (number | null)[] }> {
+  model: string,
+  label: string,
+): Promise<WeatherModelData> {
+  const fingerprint = coordFingerprint(latitude, longitude)
   const params = new URLSearchParams({
     latitude: String(latitude),
     longitude: String(longitude),
     hourly: 'precipitation',
-    models: `${AIFS_MODEL},${IFS_MODEL}`,
-    forecast_days: '4',
+    models: model,
+    forecast_hours: String(FORECAST_HOURS),
+    timezone: 'auto',
   })
   const res = await fetch(`${ECMWF_BASE}?${params}`)
-  if (!res.ok) throw new Error(`ECMWF API returned ${res.status}`)
+  if (!res.ok) throw new Error(`ECMWF ${model} returned ${res.status}`)
   const data: EcmwfResponse = await res.json()
-  if (data.error) throw new Error(data.reason ?? 'ECMWF API error')
-  return {
-    aifs: data.hourly?.precipitation_ecmwf_aifs025 ?? [],
-    ifs: data.hourly?.precipitation_ecmwf_ifs025 ?? [],
-  }
-}
+  if (data.error) throw new Error(data.reason ?? `ECMWF ${model} API error`)
 
-function buildModel(
-  label: string,
-  precip: (number | null)[],
-): WeatherModelData {
-  const allNull = precip.length === 0 || precip.every(v => v === null)
-  const status: SourceStatus = allNull ? 'demo' : 'ok'
+  const times = data.hourly?.time ?? []
+  const values = data.hourly?.precipitation ?? []
+  const series = times.map((time, i) => ({ time, value: values[i] ?? null }))
+
+  const hasData = series.length > 0 && series.some(p => p.value !== null)
+  const status: SourceMetadata['status'] = hasData ? 'live' : 'unavailable'
+  const metadata = buildMetadata(status, fingerprint, hasData ? null : 'No precipitation values returned')
+
   return {
     label,
-    precipitation24h: allNull ? null : sumFirst(precip, 24),
-    precipitation48h: allNull ? null : sumFirst(precip, 48),
-    precipitation72h: allNull ? null : sumFirst(precip, 72),
-    status,
+    model,
+    horizons: buildHorizons(series),
+    series,
+    metadata,
   }
 }
 
-export async function fetchEcmwf(
-  latitude: number,
-  longitude: number,
-): Promise<{ aifs: WeatherModelData; ifs: WeatherModelData }> {
-  const { aifs, ifs } = await fetchBoth(latitude, longitude)
-  return {
-    aifs: buildModel('ECMWF AIFS — AI Forecast', aifs),
-    ifs: buildModel('ECMWF IFS — Physics-Based Forecast', ifs),
-  }
+export async function fetchAifs(latitude: number, longitude: number): Promise<WeatherModelData> {
+  return fetchModel(latitude, longitude, AIFS_MODEL, 'ECMWF AIFS — AI Forecast')
+}
+
+export async function fetchIfs(latitude: number, longitude: number): Promise<WeatherModelData> {
+  return fetchModel(latitude, longitude, IFS_MODEL, 'ECMWF IFS — Physics-Based Forecast')
 }
