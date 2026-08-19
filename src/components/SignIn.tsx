@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { AppUser, Role } from '../App'
+import { useCommunity } from '../context/CommunityContext'
 import { IconGlobe } from './Icons'
 
 interface SignInProps {
@@ -15,16 +16,8 @@ const roles: { id: Role; label: string }[] = [
   { id: 'government', label: 'Government / Disaster Response' },
 ]
 
-const communities = [
-  'Ayeyarwady Delta Zone 3',
-  'Bogale Township',
-  'Mawlamyinegyun',
-  'Dedaye Township',
-  'Pyapon District',
-]
-
 export default function SignIn({ onSignIn }: SignInProps) {
-  const [community, setCommunity] = useState(communities[0])
+  const { community } = useCommunity()
   const [role, setRole] = useState<Role>('leader')
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
@@ -34,7 +27,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
     e.preventDefault()
     if (!name.trim()) { setError('Please enter your name.'); return }
     if (pin.length < 4) { setError('Please enter a 4-digit PIN.'); return }
-    onSignIn({ community, role, name: name.trim() })
+    onSignIn({ role, name: name.trim() })
   }
 
   return (
@@ -55,15 +48,12 @@ export default function SignIn({ onSignIn }: SignInProps) {
           <h2 className="text-base font-semibold text-gray-900 mb-5">Community Access</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Community</label>
-              <select
-                value={community}
-                onChange={e => setCommunity(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                {communities.map(c => <option key={c}>{c}</option>)}
-              </select>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <div className="text-xs font-medium text-gray-500">Current community</div>
+              <div className="mt-0.5 text-sm font-semibold text-gray-900">{community.name}</div>
+              <div className="mt-0.5 text-xs text-gray-500">
+                Community Information is the source of truth for this single-community prototype.
+              </div>
             </div>
 
             <div>

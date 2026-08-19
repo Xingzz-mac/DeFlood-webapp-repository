@@ -15,7 +15,6 @@ export type Role = 'leader' | 'mayor' | 'assistant' | 'ngo' | 'government'
 export type Section = 'dashboard' | 'risk' | 'evacuation' | 'map' | 'support' | 'community' | 'settings'
 
 export interface AppUser {
-  community: string
   role: Role
   name: string
 }

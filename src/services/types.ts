@@ -7,13 +7,22 @@ export type SourceStatus =
 
 export type RiverTrend = 'rising' | 'stable' | 'falling' | 'unavailable'
 
+export interface RefreshAttemptMetadata {
+  status: SourceStatus
+  retrievedAt: string
+  error: string | null
+}
+
 export interface SourceMetadata {
   status: SourceStatus
   retrievedAt: string
   lastSuccessfulAt: string | null
+  cachedAt: string | null
+  ageMs: number | null
   cached: boolean
   coordinateFingerprint: string
   error: string | null
+  refreshAttempt: RefreshAttemptMetadata | null
 }
 
 export interface PrecipitationHorizon {
@@ -44,12 +53,30 @@ export interface RiverDay {
   p75: number | null
 }
 
+export interface EnsembleFieldAvailability {
+  available: boolean
+  complete: boolean
+  validDays: number
+  expectedDays: number
+}
+
+export interface RiverEnsembleAvailability {
+  mean: EnsembleFieldAvailability
+  median: EnsembleFieldAvailability
+  maximum: EnsembleFieldAvailability
+  p25: EnsembleFieldAvailability
+  p75: EnsembleFieldAvailability
+}
+
 export interface RiverData {
   unit: 'm³/s'
   days: RiverDay[]
+  primaryValidDays: number
+  primaryUsable: boolean
   peakDischarge: number | null
   peakDate: string | null
   trend: RiverTrend
+  ensembleAvailability: RiverEnsembleAvailability
   metadata: SourceMetadata
 }
 

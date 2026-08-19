@@ -1,4 +1,11 @@
-import type { RiverData, RiverDay, RiverTrend, SourceMetadata } from './types'
+import type {
+  RiverData,
+  RiverDay,
+  RiverTrend,
+  SourceMetadata,
+  RiverEnsembleAvailability,
+  EnsembleFieldAvailability,
+} from './types'
 import { FLOOD_BASE, RIVER_FORECAST_DAYS } from './config'
 import { coordFingerprint } from './cache'
 
@@ -11,16 +18,18 @@ const DAILY_VARS = [
   'river_discharge_p75',
 ].join(',')
 
+export interface FloodDaily {
+  time?: string[]
+  river_discharge?: (number | null)[]
+  river_discharge_mean?: (number | null)[]
+  river_discharge_median?: (number | null)[]
+  river_discharge_max?: (number | null)[]
+  river_discharge_p25?: (number | null)[]
+  river_discharge_p75?: (number | null)[]
+}
+
 interface FloodResponse {
-  daily?: {
-    time?: string[]
-    river_discharge?: (number | null)[]
-    river_discharge_mean?: (number | null)[]
-    river_discharge_median?: (number | null)[]
-    river_discharge_max?: (number | null)[]
-    river_discharge_p25?: (number | null)[]
-    river_discharge_p75?: (number | null)[]
-  }
+  daily?: FloodDaily
   error?: boolean
   reason?: string
 }
@@ -36,9 +45,12 @@ function buildMetadata(
     status,
     retrievedAt: now,
     lastSuccessfulAt: successful ? now : null,
+    cachedAt: null,
+    ageMs: successful ? 0 : null,
     cached: false,
     coordinateFingerprint,
     error,
+    refreshAttempt: null,
   }
 }
 
@@ -47,20 +59,30 @@ function finiteValue(values: (number | null)[] | undefined, index: number): numb
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function buildDays(data: FloodResponse): RiverDay[] {
-  const dates = (data.daily?.time ?? []).slice(0, RIVER_FORECAST_DAYS)
+export function buildRiverDays(daily: FloodDaily | undefined): RiverDay[] {
+  const dates = (daily?.time ?? []).slice(0, RIVER_FORECAST_DAYS)
   return dates.map((date, index) => ({
     date,
-    discharge: finiteValue(data.daily?.river_discharge, index),
-    mean: finiteValue(data.daily?.river_discharge_mean, index),
-    median: finiteValue(data.daily?.river_discharge_median, index),
-    maximum: finiteValue(data.daily?.river_discharge_max, index),
-    p25: finiteValue(data.daily?.river_discharge_p25, index),
-    p75: finiteValue(data.daily?.river_discharge_p75, index),
+    discharge: finiteValue(daily?.river_discharge, index),
+    mean: finiteValue(daily?.river_discharge_mean, index),
+    median: finiteValue(daily?.river_discharge_median, index),
+    maximum: finiteValue(daily?.river_discharge_max, index),
+    p25: finiteValue(daily?.river_discharge_p25, index),
+    p75: finiteValue(daily?.river_discharge_p75, index),
   }))
 }
 
-function computeThreeDayPeak(days: RiverDay[]): { peak: number | null; date: string | null } {
+export const PRIMARY_RIVER_REQUIRED_VALID_DAYS = 2
+
+export function primaryRiverValidDays(days: RiverDay[]): number {
+  return days.slice(0, 3).filter(day => day.discharge !== null).length
+}
+
+export function isPrimaryRiverUsable(days: RiverDay[]): boolean {
+  return primaryRiverValidDays(days) >= PRIMARY_RIVER_REQUIRED_VALID_DAYS
+}
+
+export function computeThreeDayPeak(days: RiverDay[]): { peak: number | null; date: string | null } {
   const usable = days.slice(0, 3).filter(
     (day): day is RiverDay & { discharge: number } => day.discharge !== null,
   )
@@ -69,7 +91,7 @@ function computeThreeDayPeak(days: RiverDay[]): { peak: number | null; date: str
   return { peak: peakDay.discharge, date: peakDay.date }
 }
 
-function computeNearTermTrend(days: RiverDay[]): RiverTrend {
+export function computeNearTermTrend(days: RiverDay[]): RiverTrend {
   const usable = days.slice(0, 3).filter(
     (day): day is RiverDay & { discharge: number } => day.discharge !== null,
   )
@@ -81,6 +103,26 @@ function computeNearTermTrend(days: RiverDay[]): RiverTrend {
   if (difference > stableThreshold) return 'rising'
   if (difference < -stableThreshold) return 'falling'
   return 'stable'
+}
+
+function fieldAvailability(days: RiverDay[], field: keyof Omit<RiverDay, 'date' | 'discharge'>): EnsembleFieldAvailability {
+  const validDays = days.filter(day => day[field] !== null).length
+  return {
+    available: validDays > 0,
+    complete: days.length === RIVER_FORECAST_DAYS && validDays === RIVER_FORECAST_DAYS,
+    validDays,
+    expectedDays: RIVER_FORECAST_DAYS,
+  }
+}
+
+export function buildEnsembleAvailability(days: RiverDay[]): RiverEnsembleAvailability {
+  return {
+    mean: fieldAvailability(days, 'mean'),
+    median: fieldAvailability(days, 'median'),
+    maximum: fieldAvailability(days, 'maximum'),
+    p25: fieldAvailability(days, 'p25'),
+    p75: fieldAvailability(days, 'p75'),
+  }
 }
 
 export async function fetchRiverDischarge(
@@ -101,35 +143,30 @@ export async function fetchRiverDischarge(
   const data: FloodResponse = await response.json()
   if (data.error) throw new Error(data.reason ?? 'Flood API error')
 
-  const days = buildDays(data)
-  const values = days.flatMap(day => [
-    day.discharge,
-    day.mean,
-    day.median,
-    day.maximum,
-    day.p25,
-    day.p75,
-  ])
-  const hasData = values.some(value => value !== null)
-  const complete = days.length === RIVER_FORECAST_DAYS && values.every(value => value !== null)
-  const status: SourceMetadata['status'] = !hasData
-    ? 'unavailable'
-    : complete
-      ? 'live'
-      : 'incomplete'
-  const error = !hasData
-    ? 'No finite modeled discharge values returned'
-    : complete
+  const days = buildRiverDays(data.daily)
+  const validPrimaryDays = primaryRiverValidDays(days)
+  const primaryUsable = isPrimaryRiverUsable(days)
+  const status: SourceMetadata['status'] = primaryUsable
+    ? 'live'
+    : validPrimaryDays > 0
+      ? 'incomplete'
+      : 'unavailable'
+  const error = validPrimaryDays === 0
+    ? 'No finite primary river_discharge values in the first three forecast days'
+    : primaryUsable
       ? null
-      : 'The seven-day discharge forecast contains missing values'
+      : `Primary river forecast requires at least ${PRIMARY_RIVER_REQUIRED_VALID_DAYS} valid discharge days in the first three days`
   const { peak, date } = computeThreeDayPeak(days)
 
   return {
     unit: 'm³/s',
     days,
+    primaryValidDays: validPrimaryDays,
+    primaryUsable,
     peakDischarge: peak,
     peakDate: date,
     trend: computeNearTermTrend(days),
-    metadata: buildMetadata(status, coordinateFingerprint, error, hasData),
+    ensembleAvailability: buildEnsembleAvailability(days),
+    metadata: buildMetadata(status, coordinateFingerprint, error, primaryUsable),
   }
 }

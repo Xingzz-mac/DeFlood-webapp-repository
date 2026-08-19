@@ -8,7 +8,7 @@ interface EvacuationPlannerProps {
   onNavigate: (s: Section) => void
 }
 
-export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps) {
+export default function EvacuationPlanner({ onNavigate: _onNavigate }: EvacuationPlannerProps) {
   const { community } = useCommunity()
   const [pop, setPop] = useState({
     total: community.population,
@@ -33,8 +33,8 @@ export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps
   })
   const [generated, setGenerated] = useState(false)
 
-  const vulnerable = pop.children + pop.elderly + pop.disabled + pop.other
-  const deficit = pop.total - res.capacity
+  const vulnerableTotal = pop.children + pop.elderly + pop.disabled + pop.other
+  const capacityDifference = res.capacity - pop.total
 
   const handleGenerate = (e: FormEvent) => {
     e.preventDefault()
@@ -50,7 +50,7 @@ export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps
         </div>
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-sm text-gray-700 font-semibold">
           <IconAlertTriangle size={15} />
-          Prototype only — no risk recommendation
+          Evacuation planning prototype — operational recommendations are not enabled yet.
         </div>
       </div>
 
@@ -99,77 +99,40 @@ export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps
             type="submit"
             className="w-full bg-[#1e3a5f] hover:bg-[#2d5282] text-white font-semibold py-3 rounded-xl text-sm transition-colors"
           >
-            Generate Evacuation Plan
+            Review Prototype Inputs
           </button>
         </form>
 
-        {/* Right: Generated plan */}
+        {/* Right: non-operational prototype summary */}
         <div>
           {generated ? (
             <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
               <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-                <IconCheckCircle size={19} className="text-green-600" />
-                <h2 className="font-bold text-gray-900">Evacuation Plan</h2>
+                <IconCheckCircle size={19} className="text-blue-600" />
+                <h2 className="font-bold text-gray-900">Prototype Planning Summary</h2>
               </div>
-
-              <PlanStep number={1} title="Priority 1 — Vulnerable Residents" color="red">
-                <p>
-                  Immediately evacuate <strong>{vulnerable.toLocaleString()} vulnerable residents</strong>: {pop.elderly} elderly,{' '}
-                  {pop.children} children, {pop.disabled} people with disabilities, and {pop.other} other vulnerable residents.
-                </p>
-                <p className="mt-1">
-                  Assign {Math.min(res.volunteers, 20)} volunteers to assist. Use boats for flooded routes.
-                </p>
-              </PlanStep>
-
-              <PlanStep number={2} title="Priority 2 — Community-Defined Areas" color="orange">
-                <p>
-                  Identify priority areas using verified local instructions before acting.
-                  This prototype does not calculate flood-risk areas or elevation thresholds.
-                </p>
-              </PlanStep>
-
-              <PlanStep number={3} title="Transport Assignment" color="blue">
-                <ul className="space-y-1">
-                  <li><strong>{res.boats} boats</strong> — flooded streets and river-adjacent zones</li>
-                  <li><strong>{res.trucks} trucks</strong> — large groups and supplies</li>
-                  <li><strong>{res.cars} cars</strong> — smaller groups and medical needs</li>
-                  <li><strong>{res.volunteers} volunteers</strong> — assist residents and direct movement</li>
-                </ul>
-              </PlanStep>
-
-              <PlanStep number={4} title="Shelter Destination" color="green">
-                <p>
-                  Move all residents to <strong>{res.shelters} designated shelters</strong> with combined capacity of{' '}
-                  <strong>{res.capacity.toLocaleString()} people</strong>.
-                </p>
-                {deficit > 0 && (
-                  <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800">
-                    <strong>Warning:</strong> Shelter capacity is short by {deficit.toLocaleString()} people.
-                    Request additional shelter immediately.
-                  </div>
-                )}
-              </PlanStep>
-
-              {(sup.food === 'Limited' || sup.food === 'Critical' || sup.food === 'None') && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-                  <strong>Supply Alert:</strong> Food is {sup.food.toLowerCase()}. Request emergency food assistance now.
-                </div>
-              )}
-
-              <button
-                onClick={() => onNavigate('support')}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors mt-1"
-              >
-                Request Assistance Now
-              </button>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                This summary only echoes planning inputs. It does not decide whether, when, where, or how anyone should evacuate.
+              </div>
+              <div className="space-y-2 rounded-xl bg-gray-50 p-4 text-sm">
+                <SummaryRow label="Saved residents" value={pop.total.toLocaleString()} />
+                <SummaryRow label="Vulnerable residents recorded" value={vulnerableTotal.toLocaleString()} />
+                <SummaryRow label="Volunteers recorded" value={res.volunteers.toLocaleString()} />
+                <SummaryRow label="Vehicles recorded" value={(res.cars + res.trucks).toLocaleString()} />
+                <SummaryRow label="Boats recorded" value={res.boats.toLocaleString()} />
+                <SummaryRow label="Shelters recorded" value={res.shelters.toLocaleString()} />
+                <SummaryRow label="Shelter capacity difference" value={capacityDifference.toLocaleString()} />
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4 text-sm text-gray-600">
+                Supply entries: water {sup.water.toLowerCase()}, food {sup.food.toLowerCase()}, medicine {sup.medicine.toLowerCase()}, equipment {sup.equipment.toLowerCase()}.
+              </div>
             </div>
           ) : (
             <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl p-10 text-center">
               <IconTruck size={40} className="mx-auto mb-3 text-gray-300" />
               <p className="text-sm text-gray-400 leading-relaxed">
-                Fill in the community data and click<br />
-                <strong className="text-gray-500">Generate Evacuation Plan</strong>
+                Review the saved resource inputs and click<br />
+                <strong className="text-gray-500">Review Prototype Inputs</strong>
               </p>
             </div>
           )}
@@ -206,30 +169,11 @@ function NumField({ label, value, onChange }: { label: string; value: number; on
   )
 }
 
-function PlanStep({ number, title, color, children }: {
-  number: number
-  title: string
-  color: 'red' | 'orange' | 'blue' | 'green'
-  children: ReactNode
-}) {
-  const dot = {
-    red: 'bg-red-600',
-    orange: 'bg-amber-500',
-    blue: 'bg-blue-600',
-    green: 'bg-green-600',
-  }[color]
-
+function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-gray-200 rounded-xl p-4">
-      <div className="flex items-start gap-3">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${dot}`}>
-          {number}
-        </div>
-        <div>
-          <div className="font-semibold text-gray-900 text-sm mb-1">{title}</div>
-          <div className="text-sm text-gray-600 leading-relaxed space-y-0.5">{children}</div>
-        </div>
-      </div>
+    <div className="flex justify-between gap-3">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-mono font-semibold text-gray-900">{value}</span>
     </div>
   )
 }

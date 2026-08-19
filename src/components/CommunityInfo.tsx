@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { AppUser } from '../App'
 import { useCommunity, type CommunityData } from '../context/CommunityContext'
 import { GEO_TIMEOUT_MS } from '../services/config'
+import { isCurrentGpsRequestToken, nextGpsRequestToken } from '../utils/gpsRequestToken'
 import { IconBuilding, IconUsers, IconTruck, IconCheckCircle, IconMap, IconRefresh } from './Icons'
 
 interface CommunityInfoProps {
@@ -25,9 +26,19 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
     status: 'idle' | 'loading' | 'success' | 'error'
     message: string | null
   }>({ status: 'idle', message: null })
+  const gpsRequestTokenRef = useRef(0)
+
+  const invalidateGpsRequest = () => {
+    gpsRequestTokenRef.current = nextGpsRequestToken(gpsRequestTokenRef.current)
+  }
+
+  useEffect(() => () => {
+    gpsRequestTokenRef.current = nextGpsRequestToken(gpsRequestTokenRef.current)
+  }, [])
 
   const handleSave = (e: FormEvent) => {
     e.preventDefault()
+    invalidateGpsRequest()
     const latitude = parseCoordinate(coordinates.latitude, -90, 90)
     const longitude = parseCoordinate(coordinates.longitude, -180, 180)
     if (latitude === null || longitude === null) {
@@ -65,6 +76,7 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
     setInfo(i => ({ ...i, [key]: value }))
 
   const setManualCoordinate = (key: 'latitude' | 'longitude', value: string) => {
+    invalidateGpsRequest()
     setCoordinates(current => ({
       ...current,
       [key]: value,
@@ -77,6 +89,8 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
   }
 
   const useCurrentLocation = () => {
+    const requestToken = nextGpsRequestToken(gpsRequestTokenRef.current)
+    gpsRequestTokenRef.current = requestToken
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGpsState({
         status: 'error',
@@ -89,6 +103,7 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
     setCoordinateError(null)
     navigator.geolocation.getCurrentPosition(
       position => {
+        if (!isCurrentGpsRequestToken(gpsRequestTokenRef.current, requestToken)) return
         const latitude = position.coords.latitude
         const longitude = position.coords.longitude
         if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
@@ -115,6 +130,7 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
         })
       },
       error => {
+        if (!isCurrentGpsRequestToken(gpsRequestTokenRef.current, requestToken)) return
         const message = error.code === error.PERMISSION_DENIED
           ? 'Location permission was denied. Allow access or enter coordinates manually.'
           : error.code === error.TIMEOUT

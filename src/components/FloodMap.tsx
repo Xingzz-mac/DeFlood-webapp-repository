@@ -1,43 +1,29 @@
 import { useState } from 'react'
 import { useCommunity } from '../context/CommunityContext'
+import { buildMapCommunities, type MapRisk } from './floodMapData'
 import RiskBadge from './RiskBadge'
 
-interface Community {
-  id: string
-  name: string
-  x: number
-  y: number
-  risk: 'LOW' | 'MEDIUM' | 'HIGH'
-  population: number
-  needs: string
-  status: string
+const riskFill: Record<MapRisk, string> = {
+  LOW: '#16a34a',
+  MEDIUM: '#d97706',
+  HIGH: '#dc2626',
+  NOT_CALCULATED: '#2563eb',
 }
-
-const baseCommunities: Community[] = [
-  { id: 'c1', name: 'Ayeyarwady Delta Zone 3', x: 44, y: 43, risk: 'HIGH', population: 2340, needs: 'Rescue boats, food, medicine', status: 'Evacuating' },
-  { id: 'c2', name: 'Bogale Township', x: 28, y: 57, risk: 'HIGH', population: 4120, needs: 'Shelter, clean water', status: 'Requesting help' },
-  { id: 'c3', name: 'Mawlamyinegyun', x: 63, y: 34, risk: 'MEDIUM', population: 1870, needs: 'Monitoring only', status: 'On Alert' },
-  { id: 'c4', name: 'Dedaye Township', x: 51, y: 64, risk: 'MEDIUM', population: 3100, needs: 'Emergency supplies', status: 'Prepared' },
-  { id: 'c5', name: 'Pyapon District', x: 73, y: 56, risk: 'LOW', population: 5400, needs: 'None', status: 'Safe' },
-  { id: 'c6', name: 'Wakema', x: 19, y: 37, risk: 'LOW', population: 2800, needs: 'None', status: 'Safe' },
-]
-
-const riskFill: Record<string, string> = { LOW: '#16a34a', MEDIUM: '#d97706', HIGH: '#dc2626' }
 
 export default function FloodMap() {
   const { community: shared } = useCommunity()
-  const communities = baseCommunities.map(c =>
-    c.id === 'c1'
-      ? { ...c, name: shared.name, population: shared.population }
-      : c
-  )
-  const [selected, setSelected] = useState<Community>(communities[0])
+  const communities = buildMapCommunities(shared)
+  const [selectedId, setSelectedId] = useState('current')
+  const selected = communities.find(community => community.id === selectedId) ?? communities[0]
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <div className="mb-5">
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Community Flood Map</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Ayeyarwady Delta Region — select a community to view details</p>
+        <p className="text-gray-500 text-sm mt-0.5">Prototype map — only the blue marker represents the saved current community</p>
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+          All other communities, risk colors, shelters, and flood overlays are clearly marked sample data and are not live.
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
@@ -80,10 +66,10 @@ export default function FloodMap() {
 
               {/* Community markers */}
               {communities.map(c => {
-                const isSelected = selected.id === c.id
+                const isSelected = selectedId === c.id
                 const r = c.risk === 'HIGH' ? 3.8 : 2.8
                 return (
-                  <g key={c.id} onClick={() => setSelected(c)}>
+                  <g key={c.id} onClick={() => setSelectedId(c.id)}>
                     {isSelected && (
                       <circle cx={c.x} cy={c.y} r={r + 3.5} fill={riskFill[c.risk]} opacity="0.15" />
                     )}
@@ -93,7 +79,7 @@ export default function FloodMap() {
                       stroke="white"
                       strokeWidth="1.2"
                     />
-                    {c.risk === 'HIGH' && (
+                    {c.kind === 'sample' && c.risk === 'HIGH' && (
                       <text x={c.x} y={c.y + 0.5} textAnchor="middle" fontSize="2.5" fill="white" fontWeight="700" fontFamily="system-ui">!</text>
                     )}
                     <text
@@ -111,11 +97,12 @@ export default function FloodMap() {
 
           {/* Legend */}
           <div className="px-5 py-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-600">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> High Risk</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> Medium Risk</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> Low Risk</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#1e3a5f] inline-block" /> Shelter</span>
-            <span className="flex items-center gap-1.5"><span className="w-5 h-2.5 bg-blue-200 rounded-sm inline-block" /> Flood Zone</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> Current community — risk not calculated</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> Sample high</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> Sample medium</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> Sample low</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#1e3a5f] inline-block" /> Sample shelter</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-2.5 bg-blue-200 rounded-sm inline-block" /> Sample flood overlay</span>
           </div>
         </div>
 
@@ -125,11 +112,15 @@ export default function FloodMap() {
           <div className="bg-white border border-gray-200 rounded-2xl p-5">
             <div className="flex items-start justify-between gap-2 mb-3">
               <h2 className="font-bold text-gray-900 text-sm leading-tight">{selected.name}</h2>
-              <RiskBadge level={selected.risk} size="sm" />
+              {selected.kind === 'sample' ? (
+                <RiskBadge level={selected.risk as 'LOW' | 'MEDIUM' | 'HIGH'} size="sm" />
+              ) : (
+                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">Risk not calculated</span>
+              )}
             </div>
             <div className="space-y-2 text-sm mb-4">
               <InfoRow label="Population" value={selected.population.toLocaleString()} />
-              <InfoRow label="Current Needs" value={selected.needs} />
+              <InfoRow label={selected.kind === 'sample' ? 'Sample Needs' : 'Operational Needs'} value={selected.needs} />
               <InfoRow label="Status" value={selected.status} />
             </div>
             <div className="border-t border-gray-100 pt-3">
@@ -138,8 +129,8 @@ export default function FloodMap() {
                 {communities.map(c => (
                   <button
                     key={c.id}
-                    onClick={() => setSelected(c)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${selected.id === c.id ? 'bg-blue-50 text-blue-800 font-semibold' : 'hover:bg-gray-50 text-gray-700'}`}
+                    onClick={() => setSelectedId(c.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${selectedId === c.id ? 'bg-blue-50 text-blue-800 font-semibold' : 'hover:bg-gray-50 text-gray-700'}`}
                   >
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: riskFill[c.risk] }} />
                     <span className="truncate">{c.name}</span>

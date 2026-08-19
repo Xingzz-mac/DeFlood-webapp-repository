@@ -18,9 +18,12 @@ function buildMetadata(
     status,
     retrievedAt: now,
     lastSuccessfulAt: status === 'live' ? now : null,
+    cachedAt: null,
+    ageMs: status === 'live' ? 0 : null,
     cached: false,
     coordinateFingerprint,
     error,
+    refreshAttempt: null,
   }
 }
 

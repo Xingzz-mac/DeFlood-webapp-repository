@@ -1,5 +1,12 @@
 import type { WeatherModelData, PrecipitationHorizon, SourceMetadata } from './types'
-import { ECMWF_BASE, AIFS_MODEL, IFS_MODEL, FORECAST_HOURS, MIN_COVERAGE_PCT } from './config'
+import {
+  ECMWF_BASE,
+  AIFS_MODEL,
+  IFS_MODEL,
+  FORECAST_HOURS,
+  MIN_COVERAGE_PCT,
+  REQUIRED_WEATHER_HORIZONS,
+} from './config'
 import { coordFingerprint } from './cache'
 
 interface EcmwfResponse {
@@ -11,7 +18,7 @@ interface EcmwfResponse {
   reason?: string
 }
 
-interface ForecastPoint {
+export interface ForecastPoint {
   time: string
   value: number | null
 }
@@ -27,9 +34,12 @@ function buildMetadata(
     status,
     retrievedAt: now,
     lastSuccessfulAt: successful ? now : null,
+    cachedAt: null,
+    ageMs: successful ? 0 : null,
     cached: false,
     coordinateFingerprint,
     error,
+    refreshAttempt: null,
   }
 }
 
@@ -50,7 +60,7 @@ function forecastTimestamp(value: string): number | null {
   )
 }
 
-function buildHorizons(series: ForecastPoint[]): PrecipitationHorizon[] {
+export function buildPrecipitationHorizons(series: ForecastPoint[]): PrecipitationHorizon[] {
   const valuesByTimestamp = new Map<number, number | null>()
   for (const point of series) {
     const timestamp = forecastTimestamp(point.time)
@@ -81,6 +91,33 @@ function buildHorizons(series: ForecastPoint[]): PrecipitationHorizon[] {
   })
 }
 
+export function normalizePrecipitationSeries(
+  times: string[],
+  values: (number | null | undefined)[],
+): ForecastPoint[] {
+  return times.map((time, index) => {
+    const rawValue = values[index]
+    return {
+      time,
+      value: typeof rawValue === 'number' && Number.isFinite(rawValue) ? rawValue : null,
+    }
+  })
+}
+
+export function isWeatherModelUsable(data: WeatherModelData | undefined): boolean {
+  if (!data) return false
+  return REQUIRED_WEATHER_HORIZONS.every(hours => {
+    const horizon = data.horizons.find(candidate => candidate.hours === hours)
+    return Boolean(
+      horizon
+      && horizon.complete
+      && horizon.total !== null
+      && horizon.expectedHours === hours
+      && horizon.coverage >= MIN_COVERAGE_PCT,
+    )
+  })
+}
+
 async function fetchModel(
   latitude: number,
   longitude: number,
@@ -104,14 +141,8 @@ async function fetchModel(
 
   const times = data.hourly?.time ?? []
   const values = data.hourly?.precipitation ?? []
-  const series = times.map((time, index) => {
-    const rawValue = values[index]
-    return {
-      time,
-      value: typeof rawValue === 'number' && Number.isFinite(rawValue) ? rawValue : null,
-    }
-  })
-  const horizons = buildHorizons(series)
+  const series = normalizePrecipitationSeries(times, values)
+  const horizons = buildPrecipitationHorizons(series)
   const hasData = series.some(point => point.value !== null)
   const complete = horizons.every(horizon => horizon.complete)
   const status: SourceMetadata['status'] = !hasData
@@ -129,14 +160,18 @@ async function fetchModel(
       ? null
       : `Forecast coverage below ${MIN_COVERAGE_PCT}% for ${incompleteHorizons}`
 
-  return {
+  const result: WeatherModelData = {
     label,
     model,
     unit: 'mm',
     horizons,
     series,
-    metadata: buildMetadata(status, coordinateFingerprint, error, hasData),
+    metadata: buildMetadata(status, coordinateFingerprint, error, false),
   }
+  const usable = isWeatherModelUsable(result)
+  result.metadata.lastSuccessfulAt = usable ? result.metadata.retrievedAt : null
+  result.metadata.ageMs = usable ? 0 : null
+  return result
 }
 
 export async function fetchAifs(

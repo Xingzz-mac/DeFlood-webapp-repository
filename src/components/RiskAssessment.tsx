@@ -37,6 +37,13 @@ function fmtTime(iso: string | null): string {
   })
 }
 
+function fmtAge(ageMs: number | null): string {
+  if (ageMs === null) return 'Unavailable'
+  if (ageMs < 60_000) return 'less than 1 minute'
+  if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)} minutes`
+  return `${(ageMs / 3_600_000).toFixed(1)} hours`
+}
+
 function statusBadge(status: SourceStatus): ReactNode {
   const styles: Record<SourceStatus, string> = {
     live: 'bg-green-50 text-green-700',
@@ -62,15 +69,26 @@ function SourceHeader({
   metadata: SourceMetadata
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3">
-      <div className="flex items-center gap-2.5">
-        <span className="text-blue-700">{icon}</span>
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          <p className="text-xs text-gray-400">Retrieved {fmtTime(metadata.retrievedAt)}</p>
+    <div className="border-b border-gray-100 pb-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="text-blue-700">{icon}</span>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+            <p className="text-xs text-gray-400">
+              Retrieved {fmtTime(metadata.retrievedAt)}
+              {metadata.cached ? ` · source age ${fmtAge(metadata.ageMs)}` : ''}
+            </p>
+          </div>
         </div>
+        {statusBadge(metadata.status)}
       </div>
-      {statusBadge(metadata.status)}
+      {metadata.refreshAttempt && (
+        <p className="mt-2 text-xs text-amber-700">
+          Latest refresh was {metadata.refreshAttempt.status} at {fmtTime(metadata.refreshAttempt.retrievedAt)}.
+          The last usable cached source is retained.
+        </p>
+      )}
     </div>
   )
 }
@@ -123,6 +141,9 @@ function RiverCard({ river }: { river: RiverData }) {
           <div className="mt-1 text-xs text-gray-500">Modeled discharge, not river height</div>
         </div>
       </div>
+      <p className="mt-3 text-xs text-gray-500">
+        Primary near-term availability: {river.primaryValidDays}/3 valid river_discharge days.
+      </p>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-xs">
           <thead className="text-gray-500">
@@ -147,6 +168,14 @@ function RiverCard({ river }: { river: RiverData }) {
         </table>
       </div>
       {river.days.length === 0 && <p className="mt-4 text-sm text-gray-500">No dated forecast days are available.</p>}
+      <div className="mt-3 rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
+        <div className="mb-1 font-semibold text-gray-700">Ensemble availability (does not determine primary usability)</div>
+        {Object.entries(river.ensembleAvailability).map(([field, availability]) => (
+          <span key={field} className="mr-3 inline-block">
+            {field}: {availability.validDays}/{availability.expectedDays}
+          </span>
+        ))}
+      </div>
       {river.metadata.error && <p className="mt-3 text-xs text-amber-700">{river.metadata.error}</p>}
       <p className="mt-3 text-xs text-gray-400">
         All table values are modeled discharge in {river.unit}. Last successful response: {fmtTime(river.metadata.lastSuccessfulAt)}

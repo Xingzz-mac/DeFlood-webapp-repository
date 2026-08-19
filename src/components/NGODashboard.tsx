@@ -20,12 +20,12 @@ interface CommunityRow {
 }
 
 const communities: CommunityRow[] = [
-  { id: 'c1', name: 'Ayeyarwady Delta Zone 3', risk: 'HIGH', population: 2340, vulnerable: 420, assistance: 'Rescue boats, food, medicine', requestTime: '13:45', status: 'Pending' },
-  { id: 'c2', name: 'Bogale Township', risk: 'HIGH', population: 4120, vulnerable: 780, assistance: 'Emergency shelter, clean water', requestTime: '12:10', status: 'In Progress' },
-  { id: 'c3', name: 'Dedaye Township', risk: 'MEDIUM', population: 3100, vulnerable: 520, assistance: 'Food supplies', requestTime: '10:05', status: 'Accepted' },
-  { id: 'c4', name: 'Mawlamyinegyun', risk: 'MEDIUM', population: 1870, vulnerable: 290, assistance: 'Monitoring only', requestTime: '09:30', status: 'Accepted' },
-  { id: 'c5', name: 'Pyapon District', risk: 'LOW', population: 5400, vulnerable: 870, assistance: 'None', requestTime: '—', status: 'Resolved' },
-  { id: 'c6', name: 'Wakema', risk: 'LOW', population: 2800, vulnerable: 410, assistance: 'None', requestTime: '—', status: 'Resolved' },
+  { id: 'c1', name: 'Sample — Ayeyarwady Delta Zone 3', risk: 'HIGH', population: 2340, vulnerable: 420, assistance: 'Sample rescue and supply request', requestTime: '13:45', status: 'Pending' },
+  { id: 'c2', name: 'Sample — Bogale Township', risk: 'HIGH', population: 4120, vulnerable: 780, assistance: 'Sample shelter and water request', requestTime: '12:10', status: 'In Progress' },
+  { id: 'c3', name: 'Sample — Dedaye Township', risk: 'MEDIUM', population: 3100, vulnerable: 520, assistance: 'Sample food request', requestTime: '10:05', status: 'Accepted' },
+  { id: 'c4', name: 'Sample — Mawlamyinegyun', risk: 'MEDIUM', population: 1870, vulnerable: 290, assistance: 'Sample monitoring record', requestTime: '09:30', status: 'Accepted' },
+  { id: 'c5', name: 'Sample — Pyapon District', risk: 'LOW', population: 5400, vulnerable: 870, assistance: 'Sample: none', requestTime: '—', status: 'Resolved' },
+  { id: 'c6', name: 'Sample — Wakema', risk: 'LOW', population: 2800, vulnerable: 410, assistance: 'Sample: none', requestTime: '—', status: 'Resolved' },
 ]
 
 type FilterType = 'all' | 'high' | 'pending' | 'inprogress'
@@ -54,18 +54,23 @@ export default function NGODashboard({ user }: NGODashboardProps) {
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <div className="mb-5">
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Command Overview</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Sample NGO Command Overview</h1>
         <p className="text-gray-500 text-sm mt-0.5">
           {user.role === 'government' ? 'Government Disaster Response' : 'NGO Coordinator'} — Ayeyarwady Region
         </p>
       </div>
 
+      <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+        <strong>Demo / Sample Data — not live.</strong>{' '}
+        Every community, risk label, request, timestamp, status, and action on this page is a local interface demonstration. No organisation or field team is connected.
+      </div>
+
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <SummaryStat label="Communities" value={localData.length} color="gray" />
-        <SummaryStat label="High Risk" value={highCount} color="red" />
-        <SummaryStat label="Pending Requests" value={pendingCount} color="orange" />
-        <SummaryStat label="In Progress" value={inProgressCount} color="blue" />
+        <SummaryStat label="Sample Communities" value={localData.length} color="gray" />
+        <SummaryStat label="Sample High Risk" value={highCount} color="red" />
+        <SummaryStat label="Sample Pending" value={pendingCount} color="orange" />
+        <SummaryStat label="Sample In Progress" value={inProgressCount} color="blue" />
       </div>
 
       <div className="grid md:grid-cols-3 gap-5">
@@ -149,10 +154,10 @@ export default function NGODashboard({ user }: NGODashboardProps) {
                       onClick={() => updateStatus(selected.id, 'Accepted')}
                       className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
                     >
-                      Accept Request
+                      Demo: Accept Request
                     </button>
                     <button className="w-full border border-gray-300 text-gray-700 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors">
-                      Assign to Field Team
+                      Demo: Assign to Field Team
                     </button>
                   </>
                 )}
@@ -161,7 +166,7 @@ export default function NGODashboard({ user }: NGODashboardProps) {
                     onClick={() => updateStatus(selected.id, 'In Progress')}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
                   >
-                    Mark In Progress
+                    Demo: Mark In Progress
                   </button>
                 )}
                 {selected.status === 'In Progress' && (
@@ -169,7 +174,7 @@ export default function NGODashboard({ user }: NGODashboardProps) {
                     onClick={() => updateStatus(selected.id, 'Resolved')}
                     className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
                   >
-                    Mark Resolved
+                    Demo: Mark Resolved
                   </button>
                 )}
                 {selected.status === 'Resolved' && (

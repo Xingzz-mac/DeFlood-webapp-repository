@@ -9,8 +9,13 @@ export const FORECAST_HOURS = 96
 export const RIVER_FORECAST_DAYS = 7
 
 export const MIN_COVERAGE_PCT = 90
+export const REQUIRED_WEATHER_HORIZONS = [24, 72] as const
+
+export const WEATHER_MAX_STALE_MS = 6 * 60 * 60 * 1000
+export const RIVER_MAX_STALE_MS = 12 * 60 * 60 * 1000
+export const ELEVATION_MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000
 
 export const ENV_CACHE_TTL_MS = 60 * 60 * 1000
-export const ENV_CACHE_SCHEMA_VERSION = 3
+export const ENV_CACHE_SCHEMA_VERSION = 4
 
 export const GEO_TIMEOUT_MS = 12_000
