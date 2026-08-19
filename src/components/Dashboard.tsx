@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { AppUser, Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
+import { useRisk } from '../context/RiskContext'
 import {
   IconAlertTriangle,
   IconChevronRight,
@@ -16,10 +17,24 @@ interface DashboardProps {
 
 export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
   const { community } = useCommunity()
+  const risk = useRisk()
   const vulnerable = community.children + community.elderly + community.disabled + community.otherVulnerable
   const shelterPct = community.population > 0
     ? Math.round((community.shelterCapacity / community.population) * 100)
     : 0
+  const hazardLabel = risk.calculationStatus === 'COMPLETE'
+    ? risk.hazardLevel
+    : risk.calculationStatus
+  const hazardColor = risk.hazardLevel === 'HIGH'
+    ? 'text-red-700'
+    : risk.hazardLevel === 'MEDIUM'
+      ? 'text-amber-700'
+      : risk.hazardLevel === 'LOW'
+        ? 'text-green-700'
+        : 'text-gray-700'
+  const lastUpdate = risk.lastMeaningfulDataUpdate
+    ? new Date(risk.lastMeaningfulDataUpdate).toLocaleString()
+    : 'Unavailable'
 
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6">
@@ -30,24 +45,63 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
         </p>
       </div>
 
-      <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-5 md:p-6">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-            <IconAlertTriangle size={20} />
-          </div>
-          <div>
-            <div className="text-lg font-bold leading-tight text-gray-900">Risk calculation not implemented yet.</div>
-            <p className="mt-1 text-sm leading-relaxed text-gray-600">
-              Stage 2A displays raw environmental data only. No flood-risk level, confidence score, warning threshold, or evacuation recommendation is currently calculated.
-            </p>
-            <button
-              onClick={() => onNavigate('risk')}
-              className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline"
-            >
-              View environmental source data <IconChevronRight size={14} />
-            </button>
+      <div className="mb-4 grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+              <IconAlertTriangle size={20} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Flood Hazard</div>
+              <div className={`mt-1 text-2xl font-bold ${hazardColor}`}>
+                {risk.loading && risk.calculationStatus === 'NOT_CALCULATED' ? 'Calculating…' : hazardLabel}
+              </div>
+              <p className="mt-1 text-sm text-gray-600">
+                {risk.hazardScore === null
+                  ? 'Core rainfall and historical river evidence are required; missing evidence is never classified LOW.'
+                  : `Deterministic prototype hazard score: ${risk.hazardScore.toFixed(1)} / 100.`}
+              </p>
+            </div>
           </div>
         </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Data Confidence</div>
+          <div className="mt-1 text-2xl font-bold text-gray-900">
+            {risk.calculationStatus === 'NOT_CALCULATED' ? 'Unavailable' : `${risk.confidenceScore.toFixed(1)} / 100`}
+          </div>
+          <p className="mt-1 text-sm text-gray-600">
+            Confidence describes evidence completeness, consistency, and freshness. It is not flood probability.
+          </p>
+          <p className="mt-2 text-xs text-gray-400">Last meaningful data update: {lastUpdate}</p>
+        </div>
+      </div>
+
+      {(risk.stale || risk.degraded || risk.error) && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {risk.stale ? 'Cached source data is contributing to this result. ' : ''}
+          {risk.degraded ? 'At least one evidence or consistency component is degraded or unavailable. ' : ''}
+          {risk.error ?? ''}
+        </div>
+      )}
+
+      <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-900">Key contributing factors</h2>
+          <button
+            onClick={() => onNavigate('risk')}
+            className="inline-flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline"
+          >
+            Full assessment <IconChevronRight size={14} />
+          </button>
+        </div>
+        <ul className="mt-3 space-y-2 text-sm text-gray-600">
+          {risk.contributingFactors.map(factor => (
+            <li key={factor} className="flex gap-2">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600" />
+              <span>{factor}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">

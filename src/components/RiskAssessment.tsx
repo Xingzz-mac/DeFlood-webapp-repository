@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
-import { useEnvironmentalData } from '../hooks/useEnvironmentalData'
+import { useRisk } from '../context/RiskContext'
 import type {
   RiverData,
   SourceMetadata,
@@ -199,19 +199,23 @@ function TerrainCard({ terrain }: { terrain: TerrainData }) {
   )
 }
 
+function ScoreValue({ value }: { value: number | null }) {
+  return (
+    <span className="font-mono text-lg font-bold text-gray-900">
+      {value === null ? 'Unavailable' : `${value.toFixed(1)} / 100`}
+    </span>
+  )
+}
+
 export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
   const { community } = useCommunity()
-  const { data, loading, error, stale, refresh } = useEnvironmentalData(
-    community.latitude,
-    community.longitude,
-  )
-  const statusLabel = data?.status === 'live'
-    ? 'All sources live'
-    : data?.status === 'partial'
-      ? 'Partial source data'
-      : data?.status === 'error'
-        ? 'Sources unavailable'
-        : 'Loading source data'
+  const risk = useRisk()
+  const data = risk.environmentalData
+  const statusLabel = risk.calculationStatus === 'COMPLETE'
+    ? `${risk.hazardLevel} Flood Hazard`
+    : risk.calculationStatus === 'INCOMPLETE'
+      ? 'Incomplete hazard evidence'
+      : 'Not calculated'
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-6">
@@ -228,11 +232,11 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
           </span>
           <button
             type="button"
-            onClick={refresh}
-            disabled={loading}
+            onClick={risk.refresh}
+            disabled={risk.loading}
             className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50"
           >
-            <IconRefresh size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+            <IconRefresh size={13} className={risk.loading ? 'animate-spin' : ''} /> Refresh sources
           </button>
         </div>
       </div>
@@ -241,36 +245,135 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
         <div className="flex items-start gap-3">
           <IconAlertTriangle size={19} className="mt-0.5 shrink-0 text-blue-700" />
           <div>
-            <div className="font-bold text-gray-900">Risk calculation not implemented yet.</div>
+            <div className="font-bold text-gray-900">Prototype decision-support heuristics</div>
             <p className="mt-1 text-sm leading-relaxed text-gray-600">
-              The values below are raw environmental source data. They are not a LOW, MEDIUM, or HIGH flood-risk assessment.
+              Flood Hazard is a deterministic physical-hazard score. Data Confidence separately describes evidence completeness, consistency, and freshness—not flood probability. Thresholds require future regional calibration.
             </p>
           </div>
         </div>
       </div>
 
-      {stale && (
+      {(risk.stale || risk.degraded) && (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
-          At least one source is showing last-successful cached data for these coordinates.
+          {risk.stale ? 'At least one source is showing last-successful cached data. ' : ''}
+          {risk.degraded ? 'At least one evidence or consistency component is degraded or unavailable.' : ''}
         </div>
       )}
-      {error && !loading && (
+      {risk.error && !risk.loading && (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
-          {error}
+          {risk.error}
         </div>
       )}
-      {loading && !data && (
+      {risk.loading && !data && (
         <div className="mb-5 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm font-medium text-blue-700">
           <IconRefresh size={17} className="animate-spin" /> Fetching current-coordinate source data…
         </div>
       )}
 
+      <div className="mb-5 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Flood Hazard</div>
+          <div className="mt-1 text-2xl font-bold text-gray-900">
+            {risk.calculationStatus === 'COMPLETE' ? risk.hazardLevel : risk.calculationStatus}
+          </div>
+          <div className="mt-2"><ScoreValue value={risk.hazardScore} /></div>
+          {risk.calculationStatus === 'INCOMPLETE' && (
+            <p className="mt-2 text-xs text-amber-700">Missing core evidence is never converted into LOW.</p>
+          )}
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Data Confidence</div>
+          <div className="mt-1"><ScoreValue value={risk.calculationStatus === 'NOT_CALCULATED' ? null : risk.confidenceScore} /></div>
+          <p className="mt-2 text-xs text-gray-500">Evidence quality, not flood probability.</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+            <span>Completeness: {risk.confidenceComponents.completeness.toFixed(1)}</span>
+            <span>Agreement: {risk.confidenceComponents.modelAgreement?.toFixed(1) ?? '—'}</span>
+            <span>Ensemble: {risk.confidenceComponents.ensembleConsistency?.toFixed(1) ?? '—'}</span>
+            <span>Freshness: {risk.confidenceComponents.freshness.toFixed(1)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
+        <h2 className="font-semibold text-gray-900">Deterministic contributing factors</h2>
+        <ul className="mt-3 space-y-2 text-sm text-gray-600">
+          {risk.contributingFactors.map(factor => (
+            <li key={factor} className="flex gap-2">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600" />
+              <span>{factor}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       {data && (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <h2 className="font-semibold text-gray-900">Weather consensus and agreement</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {risk.weatherConsensus.horizons.map(horizon => (
+                <div key={horizon.hours} className="rounded-xl bg-gray-50 p-3">
+                  <div className="text-xs text-gray-500">Consensus {horizon.hours}h</div>
+                  <div className="mt-1 font-mono font-bold text-gray-900">
+                    {horizon.value === null ? 'Unavailable' : `${horizon.value.toFixed(1)} mm`}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
+              <div><span className="text-gray-500">Consensus source:</span> <strong>{risk.weatherConsensus.source}</strong></div>
+              <div><span className="text-gray-500">Agreement:</span> <strong>{risk.modelAgreement.label}</strong></div>
+              <div><span className="text-gray-500">Agreement score:</span> <strong>{risk.modelAgreement.score?.toFixed(1) ?? 'Unavailable'}</strong></div>
+              <div><span className="text-gray-500">Weighted difference:</span> <strong>{risk.modelAgreement.weightedDifference === null ? 'Unavailable' : `${(risk.modelAgreement.weightedDifference * 100).toFixed(1)}%`}</strong></div>
+              <div><span className="text-gray-500">Rainfall severity:</span> <strong>{risk.rainfallSeverity?.toFixed(1) ?? 'Unavailable'}</strong></div>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">Model agreement affects Data Confidence only and never directly changes Flood Hazard.</p>
+          </div>
           <WeatherCard model={data.weatherModels.aifs} />
           <WeatherCard model={data.weatherModels.ifs} />
           <RiverCard river={data.river} />
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <h2 className="font-semibold text-gray-900">Historical river comparison</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Same-month percentile</div>
+                <div className="mt-1 font-mono font-bold text-gray-900">{risk.riverPercentile === null ? 'Unavailable' : `${risk.riverPercentile.toFixed(1)}th`}</div>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">River abnormality</div>
+                <div className="mt-1"><ScoreValue value={risk.riverAbnormality} /></div>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <div className="text-xs text-gray-500">Near-term trend</div>
+                <div className="mt-1 font-bold text-gray-900">{risk.riverTrend.label ?? 'Unavailable'}</div>
+                <div className="text-xs text-gray-500">{risk.riverTrend.percentChange === null ? '—' : `${risk.riverTrend.percentChange.toFixed(1)}%`}</div>
+              </div>
+            </div>
+            <div className="mt-4 text-sm text-gray-600">
+              Historical baseline: <strong>{risk.historicalBaseline?.status ?? 'not requested'}</strong>
+              {' · '}{risk.historicalBaseline?.validSampleCount ?? 0} valid samples
+              {' · '}{risk.historicalBaseline?.distinctYears ?? 0} distinct years
+              {' · '}range {risk.historicalBaseline?.firstValidDate ?? '—'} to {risk.historicalBaseline?.lastValidDate ?? '—'}
+            </div>
+            <div className="mt-2 text-sm text-gray-600">
+              Ensemble consistency: <strong>{risk.ensembleConsistency.score?.toFixed(1) ?? 'Unavailable'}</strong>
+              {' · '}{risk.ensembleConsistency.alignedDays} aligned near-term days
+            </div>
+            <p className="mt-3 text-xs text-gray-500">The percentile describes historical same-season discharge unusualness, not flood probability.</p>
+          </div>
           <TerrainCard terrain={data.terrain} />
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <h2 className="font-semibold text-gray-900">Hazard components</h2>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm text-gray-600">
+              {Object.entries(risk.components).map(([name, component]) => (
+                <div key={name} className="rounded-lg bg-gray-50 p-3">
+                  <div className="capitalize">{name.replace(/([A-Z])/g, ' $1')}</div>
+                  <div className="font-mono font-semibold text-gray-900">{component.score?.toFixed(1) ?? 'Unavailable'}</div>
+                  <div className="text-xs">Effective weight: {(component.effectiveWeight * 100).toFixed(1)}%</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

@@ -25,7 +25,28 @@ DeFlood.AI is a React, Vite, TypeScript, and Tailwind prototype for community fl
 - Partial source failures do not block successful sources.
 - Request sequencing prevents an older coordinate response from replacing a newer one.
 
-The Risk Assessment screen currently presents raw source values and source metadata only.
+The Risk Assessment screen presents the shared deterministic result alongside raw source values and source metadata.
+
+### Stage 2B — weather-model agreement
+
+- Weighted AIFS/IFS comparison across 24-hour, 48-hour, and 72-hour rainfall accumulations.
+- Continuous agreement score plus Strong, Moderate, Weak, or Poor labels.
+- Two-model rainfall consensus, with single-model fallback when only one model is usable.
+- Agreement affects Data Confidence only; it does not directly alter physical Flood Hazard.
+
+### Stage 2C — deterministic prototype risk engine
+
+- A separately cached same-calendar-month GloFAS historical primary-discharge baseline beginning in 1984 and ending with the last completed calendar year.
+- Historical coverage checks requiring at least 10 distinct years and 100 valid daily samples.
+- Three-day forecast peak percentile and continuous river-abnormality scoring.
+- Continuous rainfall, river trend, and low-elevation contextual scores.
+- Deterministic Flood Hazard with explicit COMPLETE, INCOMPLETE, and NOT_CALCULATED states.
+- Separate Data Confidence based on completeness, model agreement, aligned GloFAS ensemble consistency, and per-source freshness.
+- A coordinate-, engine-, evidence-timestamp-, and expiry-bound derived risk cache.
+- One signed-in `RiskProvider` that owns the existing environmental hook and shares one result with Dashboard and Risk Assessment.
+- Deterministic contributing-factor explanations generated in code without an LLM.
+
+All current thresholds and weights are prototype decision-support heuristics that require regional calibration and operational validation.
 
 ## Prototype-only screens
 
@@ -36,8 +57,6 @@ The Risk Assessment screen currently presents raw source values and source metad
 
 ## Not implemented yet
 
-- An actual LOW/MEDIUM/HIGH flood-risk engine or flood-hazard scoring.
-- A historical river baseline.
 - An evacuation recommendation engine.
 - A live NGO/support workflow.
 - Backend authentication, a database, n8n, or Groq integration.

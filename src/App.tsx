@@ -10,6 +10,7 @@ import NGODashboard from './components/NGODashboard'
 import CommunityInfo from './components/CommunityInfo'
 import Settings from './components/Settings'
 import { IconMenu } from './components/Icons'
+import { RiskProvider } from './context/RiskContext'
 
 export type Role = 'leader' | 'mayor' | 'assistant' | 'ngo' | 'government'
 export type Section = 'dashboard' | 'risk' | 'evacuation' | 'map' | 'support' | 'community' | 'settings'
@@ -35,10 +36,39 @@ export default function App() {
     )
   }
 
+  return (
+    <RiskProvider>
+      <SignedInApplication
+        user={user}
+        section={section}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+        setSection={setSection}
+        onSignOut={() => setUser(null)}
+      />
+    </RiskProvider>
+  )
+}
+
+function SignedInApplication({
+  user,
+  section,
+  mobileOpen,
+  setMobileOpen,
+  setSection,
+  onSignOut,
+}: {
+  user: AppUser
+  section: Section
+  mobileOpen: boolean
+  setMobileOpen: (open: boolean) => void
+  setSection: (section: Section) => void
+  onSignOut: () => void
+}) {
   const isNGO = user.role === 'ngo' || user.role === 'government'
 
-  const navigate = (s: Section) => {
-    setSection(s)
+  const navigate = (nextSection: Section) => {
+    setSection(nextSection)
     setMobileOpen(false)
   }
 
@@ -53,7 +83,7 @@ export default function App() {
       case 'map': return <FloodMap />
       case 'support': return <SupportNetwork />
       case 'community': return <CommunityInfo user={user} />
-      case 'settings': return <Settings user={user} onSignOut={() => setUser(null)} />
+      case 'settings': return <Settings user={user} onSignOut={onSignOut} />
       default: return <Dashboard user={user} onNavigate={navigate} />
     }
   }
@@ -66,7 +96,7 @@ export default function App() {
           user={user}
           activeSection={section}
           onNavigate={navigate}
-          onSignOut={() => setUser(null)}
+          onSignOut={onSignOut}
         />
       </div>
 
@@ -79,7 +109,7 @@ export default function App() {
               user={user}
               activeSection={section}
               onNavigate={navigate}
-              onSignOut={() => setUser(null)}
+              onSignOut={onSignOut}
             />
           </div>
         </div>
