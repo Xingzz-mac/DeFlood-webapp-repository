@@ -3,7 +3,7 @@
  * calibration and validation before any operational use.
  */
 export const RISK_ENGINE_VERSION = 'deflood-risk-engine-2c-v1'
-export const RISK_CACHE_SCHEMA_VERSION = 1
+export const RISK_CACHE_SCHEMA_VERSION = 2
 export const RISK_CACHE_MAX_AGE_MS = 30 * 60 * 1000
 
 export const HISTORICAL_SCHEMA_VERSION = 2

@@ -19,7 +19,17 @@ export function calculateModelAgreement(
   aifs: WeatherModelData,
   ifs: WeatherModelData,
 ): ModelAgreement {
-  if (!isWeatherModelUsable(aifs) || !isWeatherModelUsable(ifs)) {
+  const aifsUsable = isWeatherModelUsable(aifs)
+  const ifsUsable = isWeatherModelUsable(ifs)
+  if (!aifsUsable && !ifsUsable) {
+    return {
+      score: null,
+      label: 'Unavailable — no usable weather models',
+      weightedDifference: null,
+      horizons: [],
+    }
+  }
+  if (!aifsUsable || !ifsUsable) {
     return {
       score: null,
       label: 'Unavailable — single weather model',

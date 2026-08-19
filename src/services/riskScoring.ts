@@ -1,5 +1,5 @@
 import { isWeatherModelUsable } from './ecmwf'
-import { isPrimaryRiverUsable } from './glofas'
+import { isPrimaryRiverUsable, usablePrimaryRiverDays } from './glofas'
 import {
   ELEVATION_MAX_STALE_MS,
   RIVER_MAX_STALE_MS,
@@ -105,9 +105,7 @@ function trendLabel(percentChange: number): TrendLabel {
 }
 
 export function calculateRiverTrend(days: RiverDay[]): TrendAnalysis {
-  const usable = days.slice(0, 3).filter(
-    (day): day is RiverDay & { discharge: number } => day.discharge !== null,
-  )
+  const usable = usablePrimaryRiverDays(days)
   if (usable.length < 2) {
     return { score: null, percentChange: null, label: null, validDays: usable.length }
   }

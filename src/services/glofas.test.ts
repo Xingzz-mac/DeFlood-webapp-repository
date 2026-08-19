@@ -17,6 +17,25 @@ describe('GloFAS primary and ensemble usability', () => {
     expect(isPrimaryRiverUsable(days)).toBe(false)
   })
 
+  it('counts only finite primary discharge values toward usability', () => {
+    const days = buildRiverDays({
+      time: ['2026-08-19', '2026-08-20', '2026-08-21'],
+      river_discharge: [10, Number.NaN, null],
+    })
+
+    expect(isPrimaryRiverUsable(days)).toBe(false)
+  })
+
+  it('requires primary discharge values to remain aligned to valid dates', () => {
+    const days = buildRiverDays({
+      time: ['2026-08-19', '2026-08-20'],
+      river_discharge: [10, 12],
+    })
+    days[1].date = ''
+
+    expect(isPrimaryRiverUsable(days)).toBe(false)
+  })
+
   it('does not let a missing ensemble percentile invalidate usable primary discharge', () => {
     const days = buildRiverDays({
       time: ['2026-08-19', '2026-08-20', '2026-08-21'],

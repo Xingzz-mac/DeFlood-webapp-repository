@@ -1,4 +1,5 @@
 import { buildWeatherConsensus, calculateModelAgreement } from './modelAgreement'
+import { isPrimaryRiverUsable } from './glofas'
 import {
   CONFIDENCE_WEIGHTS,
   ENSEMBLE_MIN_ALIGNED_DAYS,
@@ -91,7 +92,7 @@ function buildFactors(result: {
   consensusSource: string
   ensembleScore: number | null
   historicalAvailable: boolean
-  riverPeakAvailable: boolean
+  primaryRiverUsable: boolean
 }): string[] {
   const factors: { priority: number; text: string }[] = []
   if (!result.historicalAvailable) {
@@ -99,10 +100,11 @@ function buildFactors(result: {
       priority: 120,
       text: 'Historical same-month river data is insufficient or unavailable, so Flood Hazard cannot yet be calculated.',
     })
-  } else if (!result.riverPeakAvailable) {
+  }
+  if (!result.primaryRiverUsable) {
     factors.push({
       priority: 118,
-      text: 'A finite primary river-discharge peak is unavailable for the first three forecast days, so Flood Hazard cannot yet be calculated.',
+      text: 'Current primary river forecast evidence is insufficient: at least two finite dated river_discharge values are required among the first three forecast days.',
     })
   }
   if (result.rainfallSeverity === null) {
@@ -147,6 +149,11 @@ function buildFactors(result: {
       priority: 85,
       text: `${result.consensusSource.toUpperCase()} is the only usable rainfall model, reducing model-agreement confidence.`,
     })
+  } else {
+    factors.push({
+      priority: 88,
+      text: 'Neither AIFS nor IFS is usable, so rainfall hazard and weather-model agreement are unavailable.',
+    })
   }
   if (result.ensembleScore === null) {
     factors.push({
@@ -186,7 +193,7 @@ function emptyRiskResult(nowMs: number): RiskResult {
     },
     effectiveWeights: { rainfall: 0, riverAbnormality: 0, riverTrend: 0, elevation: 0 },
     confidenceComponents: { completeness: 0, modelAgreement: null, ensembleConsistency: null, freshness: 0 },
-    modelAgreement: { score: null, label: 'Unavailable — single weather model', weightedDifference: null, horizons: [] },
+    modelAgreement: { score: null, label: 'Unavailable — no usable weather models', weightedDifference: null, horizons: [] },
     weatherConsensus: { source: 'unavailable', horizons: [24, 48, 72].map(hours => ({ hours: hours as 24 | 48 | 72, value: null })) },
     rainfallSeverity: null,
     riverPercentile: null,
@@ -237,7 +244,8 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     environmental.weatherModels.ifs,
   )
   const rainfallSeverity = calculateRainfallSeverity(weatherConsensus)
-  const riverPercentile = historical?.status === 'available'
+  const primaryRiverUsable = isPrimaryRiverUsable(environmental.river.days)
+  const riverPercentile = historical?.status === 'available' && primaryRiverUsable
     ? calculatePercentileRank(environmental.river.peakDischarge, historical.values)
     : null
   const riverAbnormality = calculateRiverAbnormality(riverPercentile)
@@ -319,7 +327,7 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
       consensusSource: weatherConsensus.source,
       ensembleScore: ensembleConsistency.score,
       historicalAvailable: historical?.status === 'available',
-      riverPeakAvailable: environmental.river.peakDischarge !== null,
+      primaryRiverUsable,
     }),
     lastMeaningfulDataUpdate: latestSuccessfulUpdate(
       environmental,

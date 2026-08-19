@@ -8,6 +8,7 @@ export type AgreementLabel =
   | 'Weak'
   | 'Poor'
   | 'Unavailable — single weather model'
+  | 'Unavailable — no usable weather models'
   | 'Unavailable — incomplete horizons'
 export type WeatherConsensusSource = 'aifs+ifs' | 'aifs' | 'ifs' | 'unavailable'
 export type TrendLabel = 'sharply rising' | 'rising' | 'stable' | 'falling' | 'sharply falling'

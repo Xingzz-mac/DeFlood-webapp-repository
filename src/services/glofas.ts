@@ -74,8 +74,22 @@ export function buildRiverDays(daily: FloodDaily | undefined): RiverDay[] {
 
 export const PRIMARY_RIVER_REQUIRED_VALID_DAYS = 2
 
+export function usablePrimaryRiverDays(
+  days: RiverDay[],
+): (RiverDay & { discharge: number })[] {
+  return days.slice(0, 3).filter(
+    (day): day is RiverDay & { discharge: number } => (
+      typeof day.date === 'string'
+      && day.date.trim().length > 0
+      && Number.isFinite(Date.parse(day.date))
+      && typeof day.discharge === 'number'
+      && Number.isFinite(day.discharge)
+    ),
+  )
+}
+
 export function primaryRiverValidDays(days: RiverDay[]): number {
-  return days.slice(0, 3).filter(day => day.discharge !== null).length
+  return usablePrimaryRiverDays(days).length
 }
 
 export function isPrimaryRiverUsable(days: RiverDay[]): boolean {
@@ -83,18 +97,14 @@ export function isPrimaryRiverUsable(days: RiverDay[]): boolean {
 }
 
 export function computeThreeDayPeak(days: RiverDay[]): { peak: number | null; date: string | null } {
-  const usable = days.slice(0, 3).filter(
-    (day): day is RiverDay & { discharge: number } => day.discharge !== null,
-  )
+  const usable = usablePrimaryRiverDays(days)
   if (usable.length === 0) return { peak: null, date: null }
   const peakDay = usable.reduce((peak, day) => day.discharge > peak.discharge ? day : peak)
   return { peak: peakDay.discharge, date: peakDay.date }
 }
 
 export function computeNearTermTrend(days: RiverDay[]): RiverTrend {
-  const usable = days.slice(0, 3).filter(
-    (day): day is RiverDay & { discharge: number } => day.discharge !== null,
-  )
+  const usable = usablePrimaryRiverDays(days)
   if (usable.length < 2) return 'unavailable'
   const first = usable[0].discharge
   const last = usable[usable.length - 1].discharge

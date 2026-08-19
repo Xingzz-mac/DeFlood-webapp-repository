@@ -35,7 +35,7 @@ function model(totals: [number, number, number] | null): WeatherModelData {
 }
 
 describe('AIFS and IFS agreement', () => {
-  it('uses the weighted difference-ratio formula for 24h, 48h, and 72h', () => {
+  it('calculates agreement when both models are usable', () => {
     const result = calculateModelAgreement(model([10, 20, 40]), model([20, 20, 20]))
 
     expect(result.weightedDifference).toBeCloseTo(
@@ -44,12 +44,28 @@ describe('AIFS and IFS agreement', () => {
     expect(result.label).toBe('Weak')
   })
 
-  it('returns unavailable rather than zero when only one model is usable', () => {
+  it('reports a single usable AIFS model', () => {
+    const result = calculateModelAgreement(model([20, 40, 60]), model(null))
+
+    expect(result.score).toBeNull()
+    expect(result.weightedDifference).toBeNull()
+    expect(result.label).toBe('Unavailable — single weather model')
+  })
+
+  it('reports a single usable IFS model', () => {
     const result = calculateModelAgreement(model(null), model([20, 40, 60]))
 
     expect(result.score).toBeNull()
     expect(result.weightedDifference).toBeNull()
     expect(result.label).toBe('Unavailable — single weather model')
+  })
+
+  it('reports that neither model is usable without implying one is available', () => {
+    const result = calculateModelAgreement(model(null), model(null))
+
+    expect(result.score).toBeNull()
+    expect(result.weightedDifference).toBeNull()
+    expect(result.label).toBe('Unavailable — no usable weather models')
   })
 
   it.each([

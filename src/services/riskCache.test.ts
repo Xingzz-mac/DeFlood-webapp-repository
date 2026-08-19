@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { calculateRisk } from './riskEngine'
 import {
+  buildRiskEvidence,
+  calculateRiskWithCache,
   readRiskCache,
+  riskCacheKey,
   writeRiskCache,
-  type RiskEvidenceIdentity,
 } from './riskCache'
+import { calculateRisk } from './riskEngine'
+import type { HistoricalBaseline } from './riskTypes'
+import type { EnvironmentalData, RiverDay, SourceMetadata, WeatherModelData } from './types'
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>()
@@ -16,75 +20,222 @@ class MemoryStorage implements Storage {
   setItem(key: string, value: string) { this.values.set(key, value) }
 }
 
-const evidence: RiskEvidenceIdentity = {
-  coordinateFingerprint: '16.5000,95.0000',
-  engineVersion: 'engine-v1',
-  aifsLastSuccessfulAt: '2026-08-19T00:00:00.000Z',
-  aifsState: 'live|fresh|no-refresh-failure|',
-  ifsLastSuccessfulAt: '2026-08-19T00:00:00.000Z',
-  ifsState: 'live|fresh|no-refresh-failure|',
-  riverLastSuccessfulAt: '2026-08-19T00:00:00.000Z',
-  riverState: 'live|fresh|no-refresh-failure|',
-  elevationLastSuccessfulAt: '2026-08-19T00:00:00.000Z',
-  elevationState: 'live|fresh|no-refresh-failure|',
-  historicalLastSuccessfulAt: '2026-08-19T00:00:00.000Z',
-  historicalMonth: 8,
-  historicalSchemaVersion: 1,
-  historicalSourceId: 'glofas-v4',
+const fingerprint = '16.5000,95.0000'
+const now = '2026-08-19T00:00:00.000Z'
+const nowMs = Date.parse(now)
+
+function metadata(coordinateFingerprint = fingerprint): SourceMetadata {
+  return {
+    status: 'live',
+    retrievedAt: now,
+    lastSuccessfulAt: now,
+    cachedAt: null,
+    ageMs: 0,
+    cached: false,
+    coordinateFingerprint,
+    error: null,
+    refreshAttempt: null,
+  }
 }
-const nowMs = Date.parse('2026-08-19T00:00:00.000Z')
+
+function weather(
+  totals: [number, number, number],
+  coordinateFingerprint = fingerprint,
+): WeatherModelData {
+  return {
+    label: 'test',
+    model: 'test-model',
+    unit: 'mm',
+    series: [],
+    horizons: ([24, 48, 72] as const).map((hours, index) => ({
+      hours,
+      total: totals[index],
+      expectedHours: hours,
+      validHours: hours,
+      coverage: 100,
+      complete: true,
+    })),
+    metadata: metadata(coordinateFingerprint),
+  }
+}
+
+function riverDays(values: number[]): RiverDay[] {
+  return values.map((discharge, index) => ({
+    date: `2026-08-${String(index + 19).padStart(2, '0')}`,
+    discharge,
+    mean: discharge,
+    median: discharge,
+    maximum: discharge * 1.2,
+    p25: discharge * 0.9,
+    p75: discharge * 1.1,
+  }))
+}
+
+function environmental(options: {
+  coordinateFingerprint?: string
+  rainfall?: [number, number, number]
+  discharge?: number[]
+} = {}): EnvironmentalData {
+  const coordinateFingerprint = options.coordinateFingerprint ?? fingerprint
+  const rainfall = options.rainfall ?? [20, 40, 60]
+  const days = riverDays(options.discharge ?? [70, 80, 90])
+  const peak = Math.max(...days.map(day => day.discharge as number))
+  return {
+    location: { latitude: 16.5, longitude: 95 },
+    fingerprint: coordinateFingerprint,
+    weatherModels: {
+      aifs: weather(rainfall, coordinateFingerprint),
+      ifs: weather(rainfall, coordinateFingerprint),
+    },
+    river: {
+      unit: 'm³/s',
+      days,
+      primaryValidDays: days.length,
+      primaryUsable: true,
+      peakDischarge: peak,
+      peakDate: days.find(day => day.discharge === peak)?.date ?? null,
+      trend: 'rising',
+      ensembleAvailability: {
+        mean: { available: true, complete: false, validDays: 3, expectedDays: 7 },
+        median: { available: true, complete: false, validDays: 3, expectedDays: 7 },
+        maximum: { available: true, complete: false, validDays: 3, expectedDays: 7 },
+        p25: { available: true, complete: false, validDays: 3, expectedDays: 7 },
+        p75: { available: true, complete: false, validDays: 3, expectedDays: 7 },
+      },
+      metadata: metadata(coordinateFingerprint),
+    },
+    terrain: { unit: 'm', elevation: 8, metadata: metadata(coordinateFingerprint) },
+    retrievedAt: now,
+    status: 'live',
+    stale: false,
+  }
+}
+
+function history(values: number[]): HistoricalBaseline {
+  return {
+    status: 'available',
+    coordinateFingerprint: fingerprint,
+    calendarMonth: 8,
+    values,
+    validSampleCount: values.length,
+    distinctYears: 20,
+    firstValidDate: '1984-08-01',
+    lastValidDate: '2025-08-31',
+    unit: 'm³/s',
+    sourceId: 'test-history',
+    schemaVersion: 2,
+    retrievedAt: now,
+    lastSuccessfulAt: now,
+    cachedAt: null,
+    cached: false,
+    error: null,
+  }
+}
+
+function cacheResult(
+  environmentalData: EnvironmentalData,
+  historicalBaseline: HistoricalBaseline,
+  storage: Storage,
+): void {
+  const evidence = buildRiskEvidence(environmentalData, historicalBaseline)
+  const result = calculateRisk({
+    environmental: environmentalData,
+    historicalBaseline,
+    nowMs,
+  })
+  writeRiskCache(evidence, result, storage, nowMs)
+}
 
 describe('derived risk cache identity', () => {
-  it('rejects another coordinate', () => {
-    const storage = populatedStorage()
-    expect(readRiskCache(
-      { ...evidence, coordinateFingerprint: '17.5000,96.0000' },
-      storage,
-      nowMs,
-    )).toBeNull()
+  it('does not reuse identical timestamps when rainfall evidence changes', () => {
+    const storage = new MemoryStorage()
+    const historical = history([10, 20, 30, 40, 50])
+    const first = environmental({ rainfall: [20, 40, 60] })
+    const changed = environmental({ rainfall: [25, 45, 65] })
+    cacheResult(first, historical, storage)
+
+    const firstEvidence = buildRiskEvidence(first, historical)
+    const changedEvidence = buildRiskEvidence(changed, historical)
+    expect(changedEvidence.evidenceHash).not.toBe(firstEvidence.evidenceHash)
+    expect(readRiskCache(changedEvidence, storage, nowMs)).toBeNull()
   })
 
-  it('rejects another engine version', () => {
-    const storage = populatedStorage()
-    expect(readRiskCache({ ...evidence, engineVersion: 'engine-v2' }, storage, nowMs)).toBeNull()
+  it('does not reuse identical timestamps when primary river evidence changes', () => {
+    const storage = new MemoryStorage()
+    const historical = history([10, 20, 30, 40, 50])
+    const first = environmental({ discharge: [70, 80, 90] })
+    const changed = environmental({ discharge: [70, 85, 100] })
+    cacheResult(first, historical, storage)
+
+    expect(readRiskCache(buildRiskEvidence(changed, historical), storage, nowMs)).toBeNull()
   })
 
-  it('rejects changed source timestamps', () => {
-    const storage = populatedStorage()
-    expect(readRiskCache({
-      ...evidence,
-      riverLastSuccessfulAt: '2026-08-19T01:00:00.000Z',
-    }, storage, nowMs)).toBeNull()
+  it('does not reuse identical timestamps when historical distribution evidence changes', () => {
+    const storage = new MemoryStorage()
+    const current = environmental()
+    const first = history([10, 20, 30, 40, 50])
+    const changed = history([10, 20, 30, 40, 55])
+    cacheResult(current, first, storage)
+
+    expect(readRiskCache(buildRiskEvidence(current, changed), storage, nowMs)).toBeNull()
+  })
+
+  it('verifies the exact evidence payload even if a compact hash were to collide', () => {
+    const storage = new MemoryStorage()
+    const current = environmental()
+    const historical = history([10, 20, 30, 40, 50])
+    const evidence = buildRiskEvidence(current, historical)
+    cacheResult(current, historical, storage)
+    const differentPayload = { ...evidence, evidencePayload: `${evidence.evidencePayload} ` }
+
+    expect(riskCacheKey(differentPayload)).toBe(riskCacheKey(evidence))
+    expect(readRiskCache(differentPayload, storage, nowMs)).toBeNull()
+  })
+
+  it('never returns coordinate A data for coordinate B', () => {
+    const storage = new MemoryStorage()
+    const historical = history([10, 20, 30, 40, 50])
+    const coordinateA = environmental()
+    const coordinateB = environmental({ coordinateFingerprint: '17.5000,96.0000' })
+    cacheResult(coordinateA, historical, storage)
+
+    expect(readRiskCache(buildRiskEvidence(coordinateB, historical), storage, nowMs)).toBeNull()
   })
 
   it('rejects an expired derived result', () => {
-    const storage = populatedStorage()
-    expect(readRiskCache(evidence, storage, nowMs + 30 * 60 * 1000 + 1)).toBeNull()
-  })
-
-  it('expires before a contributing weather source exceeds its stale limit', () => {
     const storage = new MemoryStorage()
-    const nearExpiry = {
-      ...evidence,
-      aifsLastSuccessfulAt: new Date(nowMs - 6 * 60 * 60 * 1000 + 60_000).toISOString(),
-    }
-    writeRiskCache(
-      nearExpiry,
-      calculateRisk({ environmental: null, historicalBaseline: null, nowMs }),
+    const current = environmental()
+    const historical = history([10, 20, 30, 40, 50])
+    cacheResult(current, historical, storage)
+
+    expect(readRiskCache(
+      buildRiskEvidence(current, historical),
       storage,
-      nowMs,
-    )
-    expect(readRiskCache(nearExpiry, storage, nowMs + 60_001)).toBeNull()
+      nowMs + 30 * 60 * 1000 + 1,
+    )).toBeNull()
   })
 })
 
-function populatedStorage(): MemoryStorage {
-  const storage = new MemoryStorage()
-  writeRiskCache(
-    evidence,
-    calculateRisk({ environmental: null, historicalBaseline: null, nowMs }),
-    storage,
-    nowMs,
-  )
-  return storage
-}
+describe('derived risk cache freshness', () => {
+  it('recalculates freshness and confidence from current time on a cache hit', () => {
+    const storage = new MemoryStorage()
+    const current = environmental()
+    const historical = history(Array.from({ length: 100 }, (_, index) => index + 1))
+    const initial = calculateRiskWithCache({
+      environmental: current,
+      historicalBaseline: historical,
+      nowMs,
+    }, storage)
+    const laterMs = nowMs + 20 * 60 * 1000
+    const later = calculateRiskWithCache({
+      environmental: current,
+      historicalBaseline: historical,
+      nowMs: laterMs,
+    }, storage)
+
+    expect(storage.length).toBe(1)
+    expect(later.calculatedAt).toBe(new Date(laterMs).toISOString())
+    expect(later.freshness.score).toBeLessThan(initial.freshness.score)
+    expect(later.confidenceScore).toBeLessThan(initial.confidenceScore)
+  })
+})

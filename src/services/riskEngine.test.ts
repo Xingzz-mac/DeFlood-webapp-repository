@@ -187,6 +187,10 @@ describe('deterministic Flood Hazard', () => {
     })
     expect(result.calculationStatus).toBe('INCOMPLETE')
     expect(result.hazardScore).toBeNull()
+    expect(result.modelAgreement.label).toBe('Unavailable — no usable weather models')
+    expect(result.contributingFactors).toContain(
+      'Neither AIFS nor IFS is usable, so rainfall hazard and weather-model agreement are unavailable.',
+    )
   })
 
   it('calculates hazard with only IFS but lowers confidence and leaves agreement unavailable', () => {
@@ -235,15 +239,50 @@ describe('deterministic Flood Hazard', () => {
     expect(Object.values(result.effectiveWeights).reduce((sum, value) => sum + value, 0)).toBeCloseTo(1)
   })
 
-  it('calculates hazard when trend is unavailable but a three-day peak exists', () => {
+  it('returns INCOMPLETE with only one valid primary river day', () => {
     const result = calculateRisk({
       environmental: environmental({ discharge: [80, null, null] }),
       historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
       nowMs: Date.parse(now),
     })
     expect(result.riverTrend.score).toBeNull()
-    expect(result.calculationStatus).toBe('COMPLETE')
+    expect(result.calculationStatus).toBe('INCOMPLETE')
+    expect(result.hazardScore).toBeNull()
+    expect(result.hazardLevel).toBeNull()
     expect(result.components.riverTrend.effectiveWeight).toBe(0)
+    expect(result.contributingFactors).toContain(
+      'Current primary river forecast evidence is insufficient: at least two finite dated river_discharge values are required among the first three forecast days.',
+    )
+  })
+
+  it('allows COMPLETE with two valid primary river days when other core evidence exists', () => {
+    const result = calculateRisk({
+      environmental: environmental({ discharge: [80, 90, null] }),
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+    expect(result.riverTrend.validDays).toBe(2)
+    expect(result.calculationStatus).toBe('COMPLETE')
+    expect(result.hazardScore).not.toBeNull()
+  })
+
+  it('returns INCOMPLETE for ensemble-only river values without usable primary discharge', () => {
+    const current = environmental({ discharge: [null, null, null], ensemble: false })
+    current.river.days = current.river.days.map((day, index) => ({
+      ...day,
+      p25: 70 + index,
+      median: 80 + index,
+      p75: 90 + index,
+    }))
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+    expect(result.ensembleConsistency.score).not.toBeNull()
+    expect(result.calculationStatus).toBe('INCOMPLETE')
+    expect(result.hazardScore).toBeNull()
+    expect(result.riverPercentile).toBeNull()
   })
 
   it('keeps primary river hazard usable when ensemble fields are missing but lowers confidence', () => {
