@@ -17,6 +17,7 @@ import {
 } from '../services/historicalGlofas'
 import { calculateRisk } from '../services/riskEngine'
 import { calculateRiskWithCache } from '../services/riskCache'
+import { RISK_RECALCULATION_INTERVAL_MS } from '../services/riskConfig'
 import type { HistoricalBaseline, RiskResult } from '../services/riskTypes'
 import type { EnvironmentalData } from '../services/types'
 
@@ -36,7 +37,15 @@ export function RiskProvider({ children }: { children: ReactNode }) {
   const calendarMonth = forecastDate ? monthFromForecastDate(forecastDate) : null
   const [historicalBaseline, setHistoricalBaseline] = useState<HistoricalBaseline | null>(null)
   const [historicalLoading, setHistoricalLoading] = useState(false)
+  const [riskClockTick, setRiskClockTick] = useState(0)
   const historicalSequenceRef = useRef(0)
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setRiskClockTick(tick => tick + 1)
+    }, RISK_RECALCULATION_INTERVAL_MS)
+    return () => clearInterval(intervalId)
+  }, [])
 
   useEffect(() => {
     const sequence = ++historicalSequenceRef.current
@@ -89,14 +98,16 @@ export function RiskProvider({ children }: { children: ReactNode }) {
   ])
 
   const risk = useMemo(() => {
+    void riskClockTick
     const input = {
       environmental: environmental.data,
       historicalBaseline,
+      nowMs: Date.now(),
     }
     return historicalLoading
       ? calculateRisk(input)
       : calculateRiskWithCache(input)
-  }, [environmental.data, historicalBaseline, historicalLoading])
+  }, [environmental.data, historicalBaseline, historicalLoading, riskClockTick])
 
   const historicalError = historicalBaseline?.status === 'error'
     ? historicalBaseline.error

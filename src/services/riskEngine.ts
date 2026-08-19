@@ -20,6 +20,7 @@ import {
 import type {
   FloodHazardLevel,
   HazardComponents,
+  ModelAgreementStatus,
   RiskEngineInput,
   RiskResult,
 } from './riskTypes'
@@ -89,6 +90,7 @@ function buildFactors(result: {
   elevationScore: number | null
   agreementLabel: string
   agreementScore: number | null
+  agreementStatus: ModelAgreementStatus
   consensusSource: string
   ensembleScore: number | null
   historicalAvailable: boolean
@@ -139,21 +141,35 @@ function buildFactors(result: {
       text: `Primary river discharge is ${result.trendLabel} across the usable first-three-day forecast values.`,
     })
   }
-  if (result.agreementScore !== null) {
-    factors.push({
-      priority: result.agreementScore >= 85 ? 55 : 60,
-      text: `AIFS and IFS rainfall agreement is ${result.agreementLabel.toLowerCase()}, affecting Data Confidence only.`,
-    })
-  } else if (result.consensusSource === 'aifs' || result.consensusSource === 'ifs') {
-    factors.push({
-      priority: 85,
-      text: `${result.consensusSource.toUpperCase()} is the only usable rainfall model, reducing model-agreement confidence.`,
-    })
-  } else {
-    factors.push({
-      priority: 88,
-      text: 'Neither AIFS nor IFS is usable, so rainfall hazard and weather-model agreement are unavailable.',
-    })
+  switch (result.agreementStatus) {
+    case 'BOTH_MODELS_COMPLETE_FOR_AGREEMENT':
+      if (result.agreementScore !== null) {
+        factors.push({
+          priority: result.agreementScore >= 85 ? 55 : 60,
+          text: `AIFS and IFS rainfall agreement is ${result.agreementLabel.toLowerCase()}, affecting Data Confidence only.`,
+        })
+      }
+      break
+    case 'SINGLE_USABLE_MODEL':
+      factors.push({
+        priority: 85,
+        text: result.consensusSource === 'aifs' || result.consensusSource === 'ifs'
+          ? `${result.consensusSource.toUpperCase()} is the only usable rainfall model, reducing model-agreement confidence.`
+          : 'Only one weather model is usable for rainfall hazard, reducing model-agreement confidence.',
+      })
+      break
+    case 'NO_USABLE_MODELS':
+      factors.push({
+        priority: 88,
+        text: 'Neither AIFS nor IFS is usable, so rainfall hazard and weather-model agreement are unavailable.',
+      })
+      break
+    case 'INCOMPLETE_COMPARISON_HORIZONS':
+      factors.push({
+        priority: 58,
+        text: 'Both weather models are usable for rainfall hazard, but model-agreement confidence is unavailable because one or more comparison horizons are incomplete.',
+      })
+      break
   }
   if (result.ensembleScore === null) {
     factors.push({
@@ -193,7 +209,13 @@ function emptyRiskResult(nowMs: number): RiskResult {
     },
     effectiveWeights: { rainfall: 0, riverAbnormality: 0, riverTrend: 0, elevation: 0 },
     confidenceComponents: { completeness: 0, modelAgreement: null, ensembleConsistency: null, freshness: 0 },
-    modelAgreement: { score: null, label: 'Unavailable — no usable weather models', weightedDifference: null, horizons: [] },
+    modelAgreement: {
+      status: 'NO_USABLE_MODELS',
+      score: null,
+      label: 'Unavailable — no usable weather models',
+      weightedDifference: null,
+      horizons: [],
+    },
     weatherConsensus: { source: 'unavailable', horizons: [24, 48, 72].map(hours => ({ hours: hours as 24 | 48 | 72, value: null })) },
     rainfallSeverity: null,
     riverPercentile: null,
@@ -324,6 +346,7 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
       elevationScore: elevation,
       agreementLabel: modelAgreement.label,
       agreementScore: modelAgreement.score,
+      agreementStatus: modelAgreement.status,
       consensusSource: weatherConsensus.source,
       ensembleScore: ensembleConsistency.score,
       historicalAvailable: historical?.status === 'available',

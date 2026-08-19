@@ -9,7 +9,12 @@ export type AgreementLabel =
   | 'Poor'
   | 'Unavailable — single weather model'
   | 'Unavailable — no usable weather models'
-  | 'Unavailable — incomplete horizons'
+  | 'Unavailable — incomplete comparison horizons'
+export type ModelAgreementStatus =
+  | 'BOTH_MODELS_COMPLETE_FOR_AGREEMENT'
+  | 'SINGLE_USABLE_MODEL'
+  | 'NO_USABLE_MODELS'
+  | 'INCOMPLETE_COMPARISON_HORIZONS'
 export type WeatherConsensusSource = 'aifs+ifs' | 'aifs' | 'ifs' | 'unavailable'
 export type TrendLabel = 'sharply rising' | 'rising' | 'stable' | 'falling' | 'sharply falling'
 
@@ -22,6 +27,7 @@ export interface AgreementHorizon {
 }
 
 export interface ModelAgreement {
+  status: ModelAgreementStatus
   score: number | null
   label: AgreementLabel
   weightedDifference: number | null

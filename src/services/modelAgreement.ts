@@ -4,6 +4,7 @@ import {
   AGREEMENT_RAIN_FLOOR_MM,
   AGREEMENT_SCORE_ANCHORS,
 } from './riskConfig'
+import { MIN_COVERAGE_PCT } from './config'
 import type { ModelAgreement, WeatherConsensus } from './riskTypes'
 import type { WeatherModelData } from './types'
 import { interpolateAnchors, roundScore } from './riskScoring'
@@ -15,6 +16,16 @@ function totalFor(model: WeatherModelData, hours: number): number | null {
   return typeof total === 'number' && Number.isFinite(total) ? total : null
 }
 
+function comparisonTotalFor(model: WeatherModelData, hours: number): number | null {
+  const horizon = model.horizons.find(candidate => candidate.hours === hours)
+  return horizon
+    && horizon.complete
+    && horizon.expectedHours === hours
+    && horizon.coverage >= MIN_COVERAGE_PCT
+    ? totalFor(model, hours)
+    : null
+}
+
 export function calculateModelAgreement(
   aifs: WeatherModelData,
   ifs: WeatherModelData,
@@ -23,6 +34,7 @@ export function calculateModelAgreement(
   const ifsUsable = isWeatherModelUsable(ifs)
   if (!aifsUsable && !ifsUsable) {
     return {
+      status: 'NO_USABLE_MODELS',
       score: null,
       label: 'Unavailable — no usable weather models',
       weightedDifference: null,
@@ -31,6 +43,7 @@ export function calculateModelAgreement(
   }
   if (!aifsUsable || !ifsUsable) {
     return {
+      status: 'SINGLE_USABLE_MODEL',
       score: null,
       label: 'Unavailable — single weather model',
       weightedDifference: null,
@@ -40,13 +53,14 @@ export function calculateModelAgreement(
 
   const values = HORIZONS.map(hours => ({
     hours,
-    aifs: totalFor(aifs, hours),
-    ifs: totalFor(ifs, hours),
+    aifs: comparisonTotalFor(aifs, hours),
+    ifs: comparisonTotalFor(ifs, hours),
   }))
   if (values.some(value => value.aifs === null || value.ifs === null)) {
     return {
+      status: 'INCOMPLETE_COMPARISON_HORIZONS',
       score: null,
-      label: 'Unavailable — incomplete horizons',
+      label: 'Unavailable — incomplete comparison horizons',
       weightedDifference: null,
       horizons: [],
     }
@@ -79,6 +93,7 @@ export function calculateModelAgreement(
         : 'Poor'
 
   return {
+    status: 'BOTH_MODELS_COMPLETE_FOR_AGREEMENT',
     score: roundScore(interpolateAnchors(weightedDifference, AGREEMENT_SCORE_ANCHORS)),
     label,
     weightedDifference,

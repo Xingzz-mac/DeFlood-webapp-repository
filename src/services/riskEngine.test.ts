@@ -28,8 +28,15 @@ function metadata(status: SourceMetadata['status'] = 'live'): SourceMetadata {
 
 function weather(
   totals: [number, number, number] | null,
+  incomplete48 = false,
   status: SourceMetadata['status'] = totals ? 'live' : 'unavailable',
 ): WeatherModelData {
+  const sourceMetadata = metadata(status)
+  if (incomplete48 && totals) {
+    sourceMetadata.status = 'incomplete'
+    sourceMetadata.lastSuccessfulAt = now
+    sourceMetadata.ageMs = 0
+  }
   return {
     label: 'Weather',
     model: 'test',
@@ -37,13 +44,13 @@ function weather(
     series: [],
     horizons: ([24, 48, 72] as const).map((hours, index) => ({
       hours,
-      total: totals?.[index] ?? null,
+      total: incomplete48 && hours === 48 ? null : totals?.[index] ?? null,
       expectedHours: hours,
-      validHours: totals ? hours : 0,
-      coverage: totals ? 100 : 0,
-      complete: totals !== null,
+      validHours: totals && !(incomplete48 && hours === 48) ? hours : 0,
+      coverage: totals && !(incomplete48 && hours === 48) ? 100 : 0,
+      complete: totals !== null && !(incomplete48 && hours === 48),
     })),
-    metadata: metadata(status),
+    metadata: sourceMetadata,
   }
 }
 
@@ -68,6 +75,8 @@ function environmental(options: {
   discharge?: (number | null)[]
   ensemble?: boolean
   elevation?: number | null
+  aifsIncomplete48?: boolean
+  ifsIncomplete48?: boolean
 } = {}): EnvironmentalData {
   const aifs = options.aifs === undefined ? [10, 20, 30] as [number, number, number] : options.aifs
   const ifs = options.ifs === undefined ? aifs : options.ifs
@@ -78,7 +87,10 @@ function environmental(options: {
   return {
     location: { latitude: 16.5, longitude: 95 },
     fingerprint,
-    weatherModels: { aifs: weather(aifs), ifs: weather(ifs) },
+    weatherModels: {
+      aifs: weather(aifs, options.aifsIncomplete48),
+      ifs: weather(ifs, options.ifsIncomplete48),
+    },
     river: {
       unit: 'm³/s',
       days,
@@ -226,6 +238,41 @@ describe('deterministic Flood Hazard', () => {
     expect(disagreeing.weatherConsensus).toEqual(agreeing.weatherConsensus)
     expect(disagreeing.hazardScore).toBe(agreeing.hazardScore)
     expect(disagreeing.confidenceScore).toBeLessThan(agreeing.confidenceScore)
+  })
+
+  it.each([
+    ['AIFS', { aifsIncomplete48: true }],
+    ['IFS', { ifsIncomplete48: true }],
+  ] as const)('keeps both models in hazard consensus when %s 48h comparison is incomplete', (_, incompleteOption) => {
+    const sharedHistory = history(Array.from({ length: 100 }, (_, index) => index + 1))
+    const complete = calculateRisk({
+      environmental: environmental({ aifs: [40, 70, 100], ifs: [40, 70, 100] }),
+      historicalBaseline: sharedHistory,
+      nowMs: Date.parse(now),
+    })
+    const incomplete = calculateRisk({
+      environmental: environmental({
+        aifs: [40, 70, 100],
+        ifs: [40, 70, 100],
+        ...incompleteOption,
+      }),
+      historicalBaseline: sharedHistory,
+      nowMs: Date.parse(now),
+    })
+
+    expect(incomplete.modelAgreement.status).toBe('INCOMPLETE_COMPARISON_HORIZONS')
+    expect(incomplete.modelAgreement.score).toBeNull()
+    expect(incomplete.weatherConsensus.source).toBe('aifs+ifs')
+    expect(incomplete.rainfallSeverity).toBe(complete.rainfallSeverity)
+    expect(incomplete.hazardScore).toBe(complete.hazardScore)
+    expect(incomplete.hazardLevel).toBe(complete.hazardLevel)
+    expect(incomplete.confidenceComponents.modelAgreement).toBeNull()
+    expect(incomplete.confidenceScore).toBeLessThan(complete.confidenceScore)
+    expect(incomplete.contributingFactors).toContain(
+      'Both weather models are usable for rainfall hazard, but model-agreement confidence is unavailable because one or more comparison horizons are incomplete.',
+    )
+    expect(incomplete.contributingFactors.join(' ')).not.toContain('Neither AIFS nor IFS')
+    expect(incomplete.contributingFactors.join(' ')).not.toContain('only usable rainfall model')
   })
 
   it('calculates hazard when optional elevation is unavailable and reweights available parts', () => {
