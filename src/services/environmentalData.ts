@@ -22,6 +22,7 @@ import {
 } from './glofas'
 import { fetchElevation } from './elevation'
 import { coordFingerprint, readStaleCache, writeCache } from './cache'
+import { withRequestTimeout } from './requestTimeout'
 
 export interface SourceSelection<T> {
   data: T
@@ -426,10 +427,10 @@ export async function fetchEnvironmentalData(
   const sameCoordinateCache = cached?.fingerprint === coordinateFingerprint ? cached : null
 
   const [aifsResult, ifsResult, riverResult, elevationResult] = await Promise.allSettled([
-    fetchAifs(latitude, longitude, signal),
-    fetchIfs(latitude, longitude, signal),
-    fetchRiverDischarge(latitude, longitude, signal),
-    fetchElevation(latitude, longitude, signal),
+    withRequestTimeout('AIFS', sourceSignal => fetchAifs(latitude, longitude, sourceSignal), signal),
+    withRequestTimeout('IFS', sourceSignal => fetchIfs(latitude, longitude, sourceSignal), signal),
+    withRequestTimeout('Current GloFAS', sourceSignal => fetchRiverDischarge(latitude, longitude, sourceSignal), signal),
+    withRequestTimeout('Elevation', sourceSignal => fetchElevation(latitude, longitude, sourceSignal), signal),
   ])
 
   const currentAifs = aifsResult.status === 'fulfilled'

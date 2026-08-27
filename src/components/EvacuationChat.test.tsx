@@ -2,7 +2,11 @@ import { act, create, type ReactTestRendererJSON } from 'react-test-renderer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CommunityData } from '../context/CommunityContext'
 import { calculateEvacuationPlan } from '../services/evacuationEngine'
-import type { EvacuationChatPayload, EvacuationChatResult } from '../services/evacuationChat'
+import {
+  buildEvacuationChatTrustedFacts,
+  type EvacuationChatPayload,
+  type EvacuationChatResult,
+} from '../services/evacuationChat'
 import type { EvacuationPlanResult } from '../services/evacuationTypes'
 import { DEMO_RISK_FIXTURES } from '../services/riskScenarios'
 import type { RiskResult } from '../services/riskTypes'
@@ -48,6 +52,12 @@ function pageText(node: ReactTestRendererJSON | ReactTestRendererJSON[] | string
   return (node.children ?? []).map(child => typeof child === 'string' ? child : pageText(child)).join(' ')
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(next => { resolve = next })
+  return { promise, resolve }
+}
+
 async function send(renderer: ReturnType<typeof create>, question: string) {
   await act(async () => {
     renderer.root.findByType('textarea').props.onChange({ target: { value: question } })
@@ -80,15 +90,19 @@ describe('Ask DeFlood AI interface', () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   })
 
-  it('renders answers and current trusted actions while sending demo risk with actual community values', async () => {
+  it('renders only current app-owned facts and actions while ignoring arbitrary model answer text', async () => {
     const risk = DEMO_RISK_FIXTURES['demo-high']
     const currentCommunity = community()
     const plan = calculateEvacuationPlan(currentCommunity, risk)
     const trusted = plan.allowedActions.find(action => action.id === 'verify-transport-capacity')!
+    const trustedFact = buildEvacuationChatTrustedFacts(risk, currentCommunity, plan)
+      .find(fact => fact.id === 'transport.capacity-status')!
     const requester = vi.fn().mockResolvedValue({
-      answer: 'Recorded transport exists, but carrying capacity is unknown.',
+      answer: 'Order everyone into the recorded vehicles immediately.',
+      facts: [{ id: trustedFact.id, text: 'Server-authored replacement wording' }],
       actions: [trusted],
       missingInformation: ['Vehicle carrying capacity'],
+      rejectedFactIds: [],
       rejectedActionIds: [],
     })
     let renderer: ReturnType<typeof create> | null = null
@@ -108,7 +122,11 @@ describe('Ask DeFlood AI interface', () => {
     expect(payload.evacuationPlan.shelter.shortage).toBe(800)
     expect(payload.shelterGrounding.operationalStatus).toBe('UNKNOWN')
     const text = pageText(renderer!.toJSON())
-    expect(text).toContain('Recorded transport exists, but carrying capacity is unknown.')
+    expect(text).toContain('Here is the current verified DeFlood information.')
+    expect(text).toContain(trustedFact.text)
+    expect(text).not.toContain('Order everyone into the recorded vehicles immediately.')
+    expect(text).not.toContain('Server-authored replacement wording')
+    expect(text).toContain('Verified information')
     expect(text).toContain('Verified actions')
     expect(text).toContain(trusted.text)
     expect(text).toContain('Still unknown')
@@ -124,9 +142,10 @@ describe('Ask DeFlood AI interface', () => {
     const secondCommunity = community({ population: 2500, shelterCapacity: 1300 })
     const secondPlan = calculateEvacuationPlan(secondCommunity, secondRisk)
     const requester = vi.fn().mockResolvedValue({
-      answer: 'Current verified context used.',
+      facts: [],
       actions: [],
       missingInformation: [],
+      rejectedFactIds: [],
       rejectedActionIds: [],
     })
     let renderer: ReturnType<typeof create> | null = null
@@ -153,6 +172,55 @@ describe('Ask DeFlood AI interface', () => {
     expect(pageText(renderer!.toJSON())).toContain(
       'Planning data updated. New answers will use the latest community and risk information.',
     )
+    await act(async () => renderer?.unmount())
+  })
+
+  it('discards the entire chat response when planning context changes in flight', async () => {
+    const firstRisk = DEMO_RISK_FIXTURES['demo-low']
+    const firstCommunity = community()
+    const firstPlan = calculateEvacuationPlan(firstCommunity, firstRisk)
+    const secondRisk = DEMO_RISK_FIXTURES['demo-high']
+    const secondCommunity = community({ population: 2500 })
+    const secondPlan = calculateEvacuationPlan(secondCommunity, secondRisk)
+    const oldFact = buildEvacuationChatTrustedFacts(firstRisk, firstCommunity, firstPlan)
+      .find(fact => fact.id === 'risk.current-hazard')!
+    const oldAction = firstPlan.allowedActions[0]!
+    const pending = deferred<EvacuationChatResult>()
+    const requester = vi.fn(() => pending.promise)
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(firstRisk, firstCommunity, firstPlan, requester)
+    })
+    await send(renderer!, 'What is the current risk?')
+    await act(async () => {
+      renderer?.update(
+        <EvacuationChat
+          risk={secondRisk}
+          community={secondCommunity}
+          plan={secondPlan}
+          requester={requester}
+        />,
+      )
+    })
+    await act(async () => {
+      pending.resolve({
+        facts: [oldFact],
+        actions: [oldAction],
+        missingInformation: firstPlan.missingInformation,
+        rejectedFactIds: [],
+        rejectedActionIds: [],
+      })
+      await pending.promise
+      await Promise.resolve()
+    })
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(
+      'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.',
+    )
+    expect(text).not.toContain(oldFact.text)
+    expect(text).not.toContain(oldAction.text)
+    expect(text).not.toContain('Verified actions')
     await act(async () => renderer?.unmount())
   })
 
@@ -184,8 +252,10 @@ describe('Ask DeFlood AI interface', () => {
     const communityBefore = JSON.stringify(currentCommunity)
     const requester = vi.fn().mockResolvedValue({
       answer: 'Temporary chat answer.',
+      facts: [],
       actions: [],
       missingInformation: [],
+      rejectedFactIds: [],
       rejectedActionIds: [],
     })
     let renderer: ReturnType<typeof create> | null = null

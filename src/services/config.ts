@@ -19,3 +19,4 @@ export const ENV_CACHE_TTL_MS = 60 * 60 * 1000
 export const ENV_CACHE_SCHEMA_VERSION = 4
 
 export const GEO_TIMEOUT_MS = 12_000
+export const ENVIRONMENTAL_REQUEST_TIMEOUT_MS = 12_000

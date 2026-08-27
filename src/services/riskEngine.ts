@@ -257,22 +257,48 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
   if (!environmental) return emptyRiskResult(nowMs)
 
   const historical = input.historicalBaseline
+  const freshness = calculateFreshness(environmental, nowMs)
+  const currentAifs = freshness.sources.aifs.usable
+    ? environmental.weatherModels.aifs
+    : {
+        ...environmental.weatherModels.aifs,
+        horizons: environmental.weatherModels.aifs.horizons.map(horizon => ({
+          ...horizon,
+          total: null,
+          complete: false,
+        })),
+      }
+  const currentIfs = freshness.sources.ifs.usable
+    ? environmental.weatherModels.ifs
+    : {
+        ...environmental.weatherModels.ifs,
+        horizons: environmental.weatherModels.ifs.horizons.map(horizon => ({
+          ...horizon,
+          total: null,
+          complete: false,
+        })),
+      }
+  const currentRiverDays = freshness.sources.river.usable
+    ? environmental.river.days
+    : []
   const modelAgreement = calculateModelAgreement(
-    environmental.weatherModels.aifs,
-    environmental.weatherModels.ifs,
+    currentAifs,
+    currentIfs,
   )
   const weatherConsensus = buildWeatherConsensus(
-    environmental.weatherModels.aifs,
-    environmental.weatherModels.ifs,
+    currentAifs,
+    currentIfs,
   )
   const rainfallSeverity = calculateRainfallSeverity(weatherConsensus)
-  const primaryRiverUsable = isPrimaryRiverUsable(environmental.river.days)
+  const primaryRiverUsable = isPrimaryRiverUsable(currentRiverDays)
   const riverPercentile = historical?.status === 'available' && primaryRiverUsable
     ? calculatePercentileRank(environmental.river.peakDischarge, historical.values)
     : null
   const riverAbnormality = calculateRiverAbnormality(riverPercentile)
-  const riverTrend = calculateRiverTrend(environmental.river.days)
-  const elevation = calculateElevationVulnerability(environmental.terrain.elevation)
+  const riverTrend = calculateRiverTrend(currentRiverDays)
+  const elevation = calculateElevationVulnerability(
+    freshness.sources.elevation.usable ? environmental.terrain.elevation : null,
+  )
   const ensembleConsistency = calculateEnsembleConsistency(environmental.river.days)
   const { components, hazardScore } = calculateHazardComponents(
     rainfallSeverity,
@@ -281,7 +307,6 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     elevation,
   )
   const completeness = calculateCompleteness(environmental, historical)
-  const freshness = calculateFreshness(environmental, nowMs)
   const confidenceScore = roundScore(
     completeness * CONFIDENCE_WEIGHTS.completeness
     + (modelAgreement.score ?? 0) * CONFIDENCE_WEIGHTS.modelAgreement
@@ -301,6 +326,7 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     || historical?.status !== 'available'
     || modelAgreement.score === null
     || ensembleConsistency.score === null
+    || Object.values(freshness.sources).some(source => !source.usable)
     || [
       environmental.weatherModels.aifs.metadata,
       environmental.weatherModels.ifs.metadata,

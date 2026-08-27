@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { CommunityData } from '../context/CommunityContext'
 import { ALLOWED_ACTION_REGISTRY } from './allowedActions'
 import { buildEvacuationAiPayload, requestEvacuationAiPlan } from './evacuationAi'
 import { calculateEvacuationPlan } from './evacuationEngine'
-import type { EvacuationCommunityInput, EvacuationRiskInput } from './evacuationTypes'
+import type { EvacuationRiskInput } from './evacuationTypes'
 
-const community: EvacuationCommunityInput = {
+const community: CommunityData = {
+  name: 'Sensitive Test Community',
+  township: 'Sensitive Township',
+  region: 'Sensitive Region',
   population: 1000,
   children: 120,
   elderly: 80,
@@ -20,6 +24,15 @@ const community: EvacuationCommunityInput = {
   food: 'Adequate',
   medicine: 'Adequate',
   equipment: 'Adequate',
+  leader: 'PRIVATE LEADER NAME',
+  mayor: 'PRIVATE MAYOR NAME',
+  assistant: 'PRIVATE ASSISTANT NAME',
+  phone: 'PRIVATE PHONE NUMBER',
+  latitude: 16.54321,
+  longitude: 95.12345,
+  locationSource: 'gps',
+  locationAccuracy: 12.5,
+  locationUpdatedAt: '2026-08-27T12:00:00.000Z',
 }
 const risk: EvacuationRiskInput = {
   calculationStatus: 'COMPLETE',
@@ -56,12 +69,52 @@ describe('optional evacuation AI workflow', () => {
     expect(payload).toMatchObject({
       riskLevel: 'HIGH',
       population: 1000,
+      children: 120,
+      elderly: 80,
+      peopleWithDisabilities: 30,
+      otherVulnerable: 20,
+      volunteers: 25,
+      cars: 10,
+      trucks: 3,
       shelterCapacity: 800,
+      shelterCount: 2,
       shelterShortage: 200,
       vehicles: 13,
       boats: 4,
+      water: 'Adequate',
+      food: 'Adequate',
+      medicine: 'Adequate',
+      equipment: 'Adequate',
     })
     expect(payload.allowedActions).toEqual(plan.allowedActions.map(({ id, text }) => ({ id, text })))
+    const requestBody = fetcher.mock.calls[0]?.[1]?.body
+    expect(typeof requestBody).toBe('string')
+    const posted = JSON.parse(requestBody as string)
+    expect(posted).not.toHaveProperty('leader')
+    expect(posted).not.toHaveProperty('mayor')
+    expect(posted).not.toHaveProperty('assistant')
+    expect(posted).not.toHaveProperty('phone')
+    expect(posted).not.toHaveProperty('latitude')
+    expect(posted).not.toHaveProperty('longitude')
+    expect(posted).not.toHaveProperty('locationAccuracy')
+    expect(posted).not.toHaveProperty('locationUpdatedAt')
+    expect(posted).not.toHaveProperty('locationSource')
+    expect(JSON.stringify(posted)).not.toContain('PRIVATE LEADER NAME')
+    expect(JSON.stringify(posted)).not.toContain('PRIVATE PHONE NUMBER')
+    expect(posted).toMatchObject({
+      population: 1000,
+      children: 120,
+      elderly: 80,
+      peopleWithDisabilities: 30,
+      otherVulnerable: 20,
+      volunteers: 25,
+      shelterCount: 2,
+      shelterCapacity: 800,
+      cars: 10,
+      trucks: 3,
+      boats: 4,
+      vehicles: 13,
+    })
   })
 
   it('does not display rejected or unregistered action IDs', async () => {

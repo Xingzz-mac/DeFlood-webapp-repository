@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { calculateRisk, classifyHazard } from './riskEngine'
+import {
+  ELEVATION_MAX_STALE_MS,
+  RIVER_MAX_STALE_MS,
+  WEATHER_MAX_STALE_MS,
+} from './config'
 import type { HistoricalBaseline } from './riskTypes'
 import type {
   EnvironmentalData,
@@ -284,6 +289,92 @@ describe('deterministic Flood Hazard', () => {
     expect(result.calculationStatus).toBe('COMPLETE')
     expect(result.components.elevation.effectiveWeight).toBe(0)
     expect(Object.values(result.effectiveWeights).reduce((sum, value) => sum + value, 0)).toBeCloseTo(1)
+  })
+
+  it('keeps fresh required rainfall and current river evidence eligible for COMPLETE', () => {
+    const result = calculateRisk({
+      environmental: environmental(),
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.freshness.sources.aifs.usable).toBe(true)
+    expect(result.freshness.sources.ifs.usable).toBe(true)
+    expect(result.freshness.sources.river.usable).toBe(true)
+    expect(result.calculationStatus).toBe('COMPLETE')
+  })
+
+  it('does not allow rainfall older than its maximum age to support COMPLETE', () => {
+    const current = environmental()
+    const expiredAt = new Date(Date.parse(now) - WEATHER_MAX_STALE_MS - 1).toISOString()
+    current.weatherModels.aifs.metadata.lastSuccessfulAt = expiredAt
+    current.weatherModels.ifs.metadata.lastSuccessfulAt = expiredAt
+
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.freshness.sources.aifs.usable).toBe(false)
+    expect(result.freshness.sources.ifs.usable).toBe(false)
+    expect(result.calculationStatus).toBe('INCOMPLETE')
+    expect(result.hazardScore).toBeNull()
+    expect(result.hazardLevel).toBeNull()
+  })
+
+  it('does not allow current river evidence older than its maximum age to support COMPLETE', () => {
+    const current = environmental()
+    current.river.metadata.lastSuccessfulAt = new Date(
+      Date.parse(now) - RIVER_MAX_STALE_MS - 1,
+    ).toISOString()
+
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.freshness.sources.river.usable).toBe(false)
+    expect(result.calculationStatus).toBe('INCOMPLETE')
+    expect(result.hazardScore).toBeNull()
+    expect(result.hazardLevel).toBeNull()
+  })
+
+  it('keeps core hazard COMPLETE when only optional elevation has expired', () => {
+    const current = environmental()
+    current.terrain.metadata.lastSuccessfulAt = new Date(
+      Date.parse(now) - ELEVATION_MAX_STALE_MS - 1,
+    ).toISOString()
+
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.freshness.sources.elevation.usable).toBe(false)
+    expect(result.calculationStatus).toBe('COMPLETE')
+    expect(result.components.elevation.score).toBeNull()
+    expect(result.components.elevation.effectiveWeight).toBe(0)
+  })
+
+  it('does not apply short forecast freshness limits to cached historical climatology', () => {
+    const cachedHistory = history(Array.from({ length: 100 }, (_, index) => index + 1))
+    cachedHistory.lastSuccessfulAt = new Date(
+      Date.parse(now) - 10 * 24 * 60 * 60 * 1000,
+    ).toISOString()
+    cachedHistory.cachedAt = now
+    cachedHistory.cached = true
+
+    const result = calculateRisk({
+      environmental: environmental(),
+      historicalBaseline: cachedHistory,
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.calculationStatus).toBe('COMPLETE')
+    expect(result.riverPercentile).not.toBeNull()
   })
 
   it('returns INCOMPLETE with only one valid primary river day', () => {

@@ -101,10 +101,19 @@ export interface EvacuationAiPayload {
   elderly: number | null
   children: number | null
   peopleWithDisabilities: number | null
+  otherVulnerable: number | null
+  volunteers: number | null
+  cars: number | null
+  trucks: number | null
   boats: number | null
   vehicles: number | null
+  shelterCount: number | null
   shelterCapacity: number | null
   shelterShortage: number | null
+  water: string | null
+  food: string | null
+  medicine: string | null
+  equipment: string | null
   riverTrend: TrendLabel | null
   allowedActions: Pick<AllowedAction, 'id' | 'text'>[]
 }

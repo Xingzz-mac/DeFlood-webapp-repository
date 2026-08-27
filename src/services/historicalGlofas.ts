@@ -9,6 +9,7 @@ import {
   HISTORICAL_START_DATE,
 } from './riskConfig'
 import type { HistoricalBaseline } from './riskTypes'
+import { withRequestTimeout } from './requestTimeout'
 
 interface HistoricalFloodResponse {
   daily?: {
@@ -205,7 +206,11 @@ async function requestHistoricalBaseline(
     end_date: historicalEndDate(forecastDate),
     timezone: 'GMT',
   })
-  const response = await fetch(`${FLOOD_BASE}?${params}`, { signal })
+  const response = await withRequestTimeout(
+    'Historical GloFAS',
+    requestSignal => fetch(`${FLOOD_BASE}?${params}`, { signal: requestSignal }),
+    signal,
+  )
   if (!response.ok) throw new Error(`Historical Flood API returned ${response.status}`)
   const data: HistoricalFloodResponse = await response.json()
   if (data.error) throw new Error(data.reason ?? 'Historical Flood API error')

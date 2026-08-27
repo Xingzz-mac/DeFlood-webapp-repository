@@ -9,7 +9,7 @@ DeFlood.AI is a React, Vite, TypeScript, and Tailwind prototype for community fl
 - A single `CommunityProvider` is mounted at the application root.
 - Community information persists locally under `deflood-community-data`.
 - The current saved community is shared by the dashboard, map, settings, planning prototype, and environmental-data screens.
-- Sign-in selects only a user name and role. Community Information is the source of truth for the current community.
+- Prototype access collects a user name, simulated role, and demonstration-only PIN; it is not production authentication. Community Information is the source of truth for the current community.
 
 ### Stage 2A — environmental source data
 

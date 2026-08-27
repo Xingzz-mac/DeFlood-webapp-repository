@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useEvacuationPlan } from '../context/EvacuationContext'
 import { useRisk } from '../context/RiskContext'
 import { requestEvacuationAiPlan } from '../services/evacuationAi'
+import { planningContextFingerprint } from '../services/evacuationChat'
 import type { EvacuationAiResult } from '../services/evacuationTypes'
 import EvacuationChat from './EvacuationChat'
 import {
@@ -16,7 +17,10 @@ import {
 
 interface EvacuationPlannerProps {
   onNavigate: (section: Section) => void
+  aiRequester?: typeof requestEvacuationAiPlan
 }
+
+const STALE_AI_PLAN_MESSAGE = 'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.'
 
 function displayNumber(value: number | null): string {
   return value === null ? 'Unknown' : value.toLocaleString()
@@ -27,20 +31,32 @@ function displayPercent(value: number | null): string {
   return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}%`
 }
 
-export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps) {
+export default function EvacuationPlanner({
+  onNavigate,
+  aiRequester = requestEvacuationAiPlan,
+}: EvacuationPlannerProps) {
   const { community } = useCommunity()
   const risk = useRisk()
   const plan = useEvacuationPlan()
-  const [aiState, setAiState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [aiState, setAiState] = useState<'idle' | 'loading' | 'success' | 'error' | 'stale'>('idle')
   const [aiResult, setAiResult] = useState<EvacuationAiResult | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
+  const contextFingerprint = planningContextFingerprint(risk, community, plan)
+  const latestContextFingerprintRef = useRef(contextFingerprint)
+  latestContextFingerprintRef.current = contextFingerprint
 
   const generateAiPlan = async () => {
+    const requestFingerprint = contextFingerprint
     setAiState('loading')
     setAiResult(null)
     setAiError(null)
     try {
-      const result = await requestEvacuationAiPlan(plan, community, risk)
+      const result = await aiRequester(plan, community, risk)
+      if (requestFingerprint !== latestContextFingerprintRef.current) {
+        setAiResult(null)
+        setAiState('stale')
+        return
+      }
       setAiResult(result)
       setAiState('success')
     } catch (error) {
@@ -205,6 +221,11 @@ export default function EvacuationPlanner({ onNavigate }: EvacuationPlannerProps
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             AI assistance is unavailable. The verified planning actions above are still available.
             {aiError && <span className="block pt-1 text-xs text-amber-700">{aiError}</span>}
+          </div>
+        )}
+        {aiState === 'stale' && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            {STALE_AI_PLAN_MESSAGE}
           </div>
         )}
 

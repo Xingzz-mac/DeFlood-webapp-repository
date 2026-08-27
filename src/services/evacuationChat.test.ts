@@ -66,7 +66,23 @@ describe('evacuation planning chat service', () => {
         supportingFacts: highRisk.contributingFactors,
         unavailableFacts: [],
       },
-      community: { population: 2000, shelterCapacity: 1200 },
+      community: {
+        population: 2000,
+        children: 320,
+        elderly: 140,
+        disabled: 65,
+        otherVulnerable: 20,
+        volunteers: 25,
+        cars: 2,
+        trucks: 2,
+        boats: 2,
+        shelters: 2,
+        shelterCapacity: 1200,
+        water: 'Adequate',
+        food: 'Adequate',
+        medicine: 'Adequate',
+        equipment: 'Adequate',
+      },
       evacuationPlan: { planningStatus: 'URGENT_PLANNING', shelter: { shortage: 800 } },
       shelterGrounding: {
         reportedShelterCount: 2,
@@ -77,12 +93,20 @@ describe('evacuation planning chat service', () => {
     expect(payload.allowedActions).toEqual(
       highPlan.allowedActions.map(({ id, text }) => ({ id, text })),
     )
+    expect(payload.trustedFacts).toContainEqual({
+      id: 'risk.current-hazard',
+      text: 'Current Flood Hazard is HIGH with a hazard score of 82.0 / 100.',
+    })
+    expect(payload.trustedFacts).toContainEqual({
+      id: 'shelter.operational-status',
+      text: 'Shelter operational status is unknown. Reported shelter inventory and capacity do not establish whether any shelter is operational.',
+    })
   })
 
   it('excludes internal risk implementation details from the chat POST body', async () => {
     const fetcher = vi.fn().mockResolvedValue(response({
-      answer: 'The current verified hazard is HIGH.',
-      actions: [],
+      factIds: ['risk.current-hazard'],
+      actionIds: [],
     }))
     const payload = buildEvacuationChatPayload('Explain the risk', [], highRisk, community, highPlan)
     await requestEvacuationChat(payload, highPlan, {
@@ -107,6 +131,28 @@ describe('evacuation planning chat service', () => {
     expect(JSON.stringify(posted.risk)).not.toContain('components')
     expect(JSON.stringify(posted.risk)).not.toContain('engineVersion')
     expect(JSON.stringify(posted.risk)).not.toContain('threshold')
+    expect(posted.community).not.toHaveProperty('leader')
+    expect(posted.community).not.toHaveProperty('mayor')
+    expect(posted.community).not.toHaveProperty('assistant')
+    expect(posted.community).not.toHaveProperty('phone')
+    expect(posted.community).not.toHaveProperty('latitude')
+    expect(posted.community).not.toHaveProperty('longitude')
+    expect(posted.community).not.toHaveProperty('locationAccuracy')
+    expect(posted.community).not.toHaveProperty('locationUpdatedAt')
+    expect(posted.community).not.toHaveProperty('locationSource')
+    expect(posted.community).toMatchObject({
+      population: 2000,
+      children: 320,
+      elderly: 140,
+      disabled: 65,
+      otherVulnerable: 20,
+      volunteers: 25,
+      shelters: 2,
+      shelterCapacity: 1200,
+      cars: 2,
+      trucks: 2,
+      boats: 2,
+    })
   })
 
   it('marks detailed supporting evidence unavailable when no trusted facts exist', () => {
@@ -140,7 +186,7 @@ describe('evacuation planning chat service', () => {
 
   it('does not fetch environmental data while building or posting a chat request', async () => {
     const environmentalFetcher = vi.spyOn(globalThis, 'fetch')
-    const chatFetcher = vi.fn().mockResolvedValue(response({ answer: 'Verified answer.', actions: [] }))
+    const chatFetcher = vi.fn().mockResolvedValue(response({ factIds: [], actionIds: [] }))
     const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
     await requestEvacuationChat(payload, highPlan, {
       url: 'https://example.test/chat',
@@ -166,10 +212,19 @@ describe('evacuation planning chat service', () => {
     expect(suggestions.join(' ')).not.toContain('HIGH')
   })
 
-  it('accepts an answer and renders only current trusted action text once', async () => {
+  it('resolves trusted fact and action IDs to app-owned text without server overwrites', async () => {
     const trusted = highPlan.allowedActions.find(action => action.id === 'verify-transport-capacity')
+    const trustedFact = buildEvacuationChatPayload(
+      'What about transport?',
+      [],
+      highRisk,
+      community,
+      highPlan,
+    ).trustedFacts.find(fact => fact.id === 'transport.capacity-status')
     const fetcher = vi.fn().mockResolvedValue(response({
-      answer: 'Transport inventory is recorded, but carrying capacity remains unknown.',
+      answer: 'Use every vehicle immediately. This model-authored advice must be ignored.',
+      factIds: ['transport.capacity-status'],
+      facts: [{ id: 'transport.capacity-status', text: 'Server replacement wording' }],
       actions: [
         { id: 'verify-transport-capacity', text: 'Invented wording' },
         { id: 'verify-transport-capacity', text: 'Duplicate wording' },
@@ -182,15 +237,31 @@ describe('evacuation planning chat service', () => {
       url: 'https://example.test/chat',
       fetcher,
     })
-    expect(result.answer).toBe('Transport inventory is recorded, but carrying capacity remains unknown.')
+    expect(result.facts).toEqual([trustedFact])
+    expect(result).not.toHaveProperty('answer')
     expect(result.actions).toEqual([trusted])
     expect(result.actions[0]?.text).not.toBe('Invented wording')
     expect(result.missingInformation).toEqual(['Vehicle carrying capacity'])
   })
 
+  it('rejects unknown fact IDs and deduplicates trusted fact IDs', async () => {
+    const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+    const expected = payload.trustedFacts.find(fact => fact.id === 'risk.current-hazard')
+    const fetcher = vi.fn().mockResolvedValue(response({
+      factIds: ['invented.fact', 'risk.current-hazard', 'risk.current-hazard'],
+      actionIds: [],
+    }))
+    const result = await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher,
+    })
+    expect(result.facts).toEqual([expected])
+    expect(result.rejectedFactIds).toEqual(['invented.fact'])
+  })
+
   it('ignores unknown and rejected action IDs', async () => {
     const fetcher = vi.fn().mockResolvedValue(response({
-      answer: 'Only validated current actions can be surfaced.',
+      factIds: [],
       actions: [
         { id: 'invent-route', text: 'Invent a route' },
         { id: 'verify-transport-capacity', text: 'Valid ID' },
@@ -206,18 +277,18 @@ describe('evacuation planning chat service', () => {
     expect(result.rejectedActionIds).toEqual(['verify-transport-capacity'])
   })
 
-  it('rejects malformed responses and empty answers gracefully', async () => {
-    const malformedFetcher = vi.fn().mockResolvedValue(response({ answer: 'Okay', actions: 'bad' }))
-    const emptyFetcher = vi.fn().mockResolvedValue(response({ answer: '   ', actions: [] }))
+  it('rejects malformed fact and action selections', async () => {
+    const malformedActionsFetcher = vi.fn().mockResolvedValue(response({ actions: 'bad' }))
+    const malformedFactsFetcher = vi.fn().mockResolvedValue(response({ factIds: 'risk.current-hazard' }))
     const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
     await expect(requestEvacuationChat(payload, highPlan, {
       url: 'https://example.test/chat',
-      fetcher: malformedFetcher,
+      fetcher: malformedActionsFetcher,
     })).rejects.toThrow('malformed actions')
     await expect(requestEvacuationChat(payload, highPlan, {
       url: 'https://example.test/chat',
-      fetcher: emptyFetcher,
-    })).rejects.toThrow('empty answer')
+      fetcher: malformedFactsFetcher,
+    })).rejects.toThrow('malformed fact IDs')
   })
 
   it('handles timeout and network failure without modifying the deterministic plan', async () => {

@@ -9,6 +9,7 @@ import {
 import type { CommunityData } from '../context/CommunityContext'
 import {
   buildEvacuationChatPayload,
+  buildEvacuationChatTrustedFacts,
   capConversationHistory,
   planningContextFingerprint,
   requestEvacuationChat,
@@ -16,6 +17,7 @@ import {
   type EvacuationChatHistoryMessage,
   type EvacuationChatPayload,
   type EvacuationChatResult,
+  type EvacuationChatTrustedFact,
 } from '../services/evacuationChat'
 import type { AllowedAction, EvacuationPlanResult } from '../services/evacuationTypes'
 import type { RiskResult } from '../services/riskTypes'
@@ -36,17 +38,30 @@ interface DisplayMessage {
   id: number
   role: 'user' | 'assistant' | 'context'
   content: string
+  facts: EvacuationChatTrustedFact[]
   actions: AllowedAction[]
   missingInformation: string[]
   error: boolean
 }
 
 const UNAVAILABLE_MESSAGE = 'DeFlood AI is temporarily unavailable. The verified planning information above is still available.'
+const NO_VERIFIED_ANSWER_MESSAGE = 'That information is not available in the current verified DeFlood data.'
+const STALE_RESPONSE_MESSAGE = 'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.'
 
 function revalidateResult(
   result: EvacuationChatResult,
   currentPlan: EvacuationPlanResult,
+  currentFacts: EvacuationChatTrustedFact[],
 ): EvacuationChatResult {
+  const currentFactMap = new Map(currentFacts.map(fact => [fact.id, fact]))
+  const seenFacts = new Set<string>()
+  const facts = result.facts.flatMap(fact => {
+    if (seenFacts.has(fact.id)) return []
+    const trusted = currentFactMap.get(fact.id)
+    if (!trusted) return []
+    seenFacts.add(fact.id)
+    return [trusted]
+  })
   const currentActions = new Map(currentPlan.allowedActions.map(action => [action.id, action]))
   const seenActions = new Set<string>()
   const actions = result.actions.flatMap(action => {
@@ -59,7 +74,7 @@ function revalidateResult(
   const currentMissing = new Set(currentPlan.missingInformation)
   const missingInformation = [...new Set(result.missingInformation)]
     .filter(item => currentMissing.has(item))
-  return { ...result, actions, missingInformation }
+  return { ...result, facts, actions, missingInformation }
 }
 
 export default function EvacuationChat({
@@ -74,9 +89,10 @@ export default function EvacuationChat({
   const loadingRef = useRef(false)
   const nextMessageId = useRef(1)
   const messageEndRef = useRef<HTMLDivElement | null>(null)
-  const latestPlanRef = useRef(plan)
-  latestPlanRef.current = plan
+  const trustedFacts = buildEvacuationChatTrustedFacts(risk, community, plan)
   const contextFingerprint = planningContextFingerprint(risk, community, plan)
+  const latestContextRef = useRef({ contextFingerprint, plan, trustedFacts })
+  latestContextRef.current = { contextFingerprint, plan, trustedFacts }
   const previousContextFingerprint = useRef(contextFingerprint)
   const suggestions = useMemo(
     () => suggestedEvacuationChatQuestions(risk, plan),
@@ -86,11 +102,12 @@ export default function EvacuationChat({
   const addMessage = (
     role: DisplayMessage['role'],
     content: string,
-    extras: Partial<Pick<DisplayMessage, 'actions' | 'missingInformation' | 'error'>> = {},
+    extras: Partial<Pick<DisplayMessage, 'facts' | 'actions' | 'missingInformation' | 'error'>> = {},
   ): DisplayMessage => ({
     id: nextMessageId.current++,
     role,
     content,
+    facts: extras.facts ?? [],
     actions: extras.actions ?? [],
     missingInformation: extras.missingInformation ?? [],
     error: extras.error ?? false,
@@ -114,7 +131,15 @@ export default function EvacuationChat({
   const historyForRequest = (): EvacuationChatHistoryMessage[] => capConversationHistory(
     messages.flatMap(message => (
       (message.role === 'user' || message.role === 'assistant') && !message.error
-        ? [{ role: message.role, content: message.content }]
+        ? [{
+            role: message.role,
+            content: [
+              message.content,
+              ...message.facts.map(fact => fact.text),
+              ...message.actions.map(action => `Verified action: ${action.text}`),
+              ...message.missingInformation.map(item => `Still unknown: ${item}`),
+            ].join('\n'),
+          }]
         : []
     )),
   )
@@ -123,6 +148,7 @@ export default function EvacuationChat({
     const question = value.trim()
     if (!question || loadingRef.current) return
     loadingRef.current = true
+    const requestFingerprint = contextFingerprint
     const history = historyForRequest()
     const payload = buildEvacuationChatPayload(question, history, risk, community, plan)
     setMessages(current => [...current, addMessage('user', question)])
@@ -130,8 +156,21 @@ export default function EvacuationChat({
     setLoading(true)
     try {
       const response = await requester(payload, plan)
-      const validated = revalidateResult(response, latestPlanRef.current)
-      setMessages(current => [...current, addMessage('assistant', validated.answer, {
+      if (requestFingerprint !== latestContextRef.current.contextFingerprint) {
+        setMessages(current => [...current, addMessage('assistant', STALE_RESPONSE_MESSAGE, { error: true })])
+        setDraft(question)
+        return
+      }
+      const validated = revalidateResult(
+        response,
+        latestContextRef.current.plan,
+        latestContextRef.current.trustedFacts,
+      )
+      const content = validated.facts.length > 0
+        ? 'Here is the current verified DeFlood information.'
+        : NO_VERIFIED_ANSWER_MESSAGE
+      setMessages(current => [...current, addMessage('assistant', content, {
+        facts: validated.facts,
         actions: validated.actions,
         missingInformation: validated.missingInformation,
       })])
@@ -239,6 +278,14 @@ export default function EvacuationChat({
                   {user ? 'You' : 'DeFlood AI'}
                 </div>
                 <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                {message.facts.length > 0 && (
+                  <div className="mt-3 border-t border-gray-300/60 pt-3">
+                    <div className="text-xs font-bold text-gray-700">Verified information</div>
+                    <ul className="mt-2 space-y-1.5 text-xs">
+                      {message.facts.map(fact => <li key={fact.id}>• {fact.text}</li>)}
+                    </ul>
+                  </div>
+                )}
                 {message.actions.length > 0 && (
                   <div className="mt-3 border-t border-gray-300/60 pt-3">
                     <div className="text-xs font-bold text-gray-700">Verified actions</div>

@@ -30,20 +30,45 @@ export interface EvacuationChatShelterGrounding {
   operationalStatusMeaning: 'Reported shelter inventory and capacity do not establish whether any shelter is operational.'
 }
 
+export interface EvacuationChatTrustedFact {
+  id: string
+  text: string
+}
+
+export interface EvacuationChatCommunity {
+  population: number
+  children: number
+  elderly: number
+  disabled: number
+  otherVulnerable: number
+  volunteers: number
+  cars: number
+  trucks: number
+  boats: number
+  shelters: number
+  shelterCapacity: number
+  water: string
+  food: string
+  medicine: string
+  equipment: string
+}
+
 export interface EvacuationChatPayload {
   message: string
   conversationHistory: EvacuationChatHistoryMessage[]
   risk: EvacuationChatSafeRisk
-  community: CommunityData
+  community: EvacuationChatCommunity
   evacuationPlan: EvacuationPlanResult
   shelterGrounding: EvacuationChatShelterGrounding
+  trustedFacts: EvacuationChatTrustedFact[]
   allowedActions: Pick<AllowedAction, 'id' | 'text'>[]
 }
 
 export interface EvacuationChatResult {
-  answer: string
+  facts: EvacuationChatTrustedFact[]
   actions: AllowedAction[]
   missingInformation: string[]
+  rejectedFactIds: string[]
   rejectedActionIds: string[]
 }
 
@@ -81,6 +106,105 @@ function serializeRisk(risk: RiskResult): EvacuationChatSafeRisk {
   }
 }
 
+function formatNumber(value: number): string {
+  return value.toLocaleString('en-US')
+}
+
+function formatScore(value: number): string {
+  return `${value.toFixed(1)} / 100`
+}
+
+export function buildEvacuationChatTrustedFacts(
+  risk: RiskResult,
+  community: CommunityData,
+  plan: EvacuationPlanResult,
+): EvacuationChatTrustedFact[] {
+  const facts: EvacuationChatTrustedFact[] = []
+  const add = (id: string, text: string) => facts.push({ id, text })
+
+  add('risk.status', `Flood Hazard calculation status is ${risk.calculationStatus}.`)
+  if (risk.hazardLevel !== null && risk.hazardScore !== null) {
+    add(
+      'risk.current-hazard',
+      `Current Flood Hazard is ${risk.hazardLevel} with a hazard score of ${formatScore(risk.hazardScore)}.`,
+    )
+  }
+  if (risk.calculationStatus === 'NOT_CALCULATED') {
+    add('risk.data-confidence', 'Data Confidence is unavailable because Flood Hazard has not been calculated.')
+  } else {
+    add(
+      'risk.data-confidence',
+      `Current Data Confidence is ${formatScore(risk.confidenceScore)}. Data Confidence describes evidence quality, not flood probability.`,
+    )
+  }
+  risk.contributingFactors
+    .filter(fact => fact.trim() !== '')
+    .slice(0, 5)
+    .forEach((text, index) => add(`risk.supporting-${index + 1}`, text))
+
+  const location = [community.name, community.township, community.region]
+    .map(value => value.trim())
+    .filter(value => value !== '')
+    .join(', ')
+  if (location) add('community.identity', `Current recorded community is ${location}.`)
+  add('community.population', `Recorded community population is ${formatNumber(community.population)}.`)
+  if (plan.priorityGroups.length > 0) {
+    const groups = plan.priorityGroups
+      .map(group => `${group.label}: ${formatNumber(group.count)}`)
+      .join('; ')
+    add(
+      'community.priority-groups',
+      `Recorded priority groups are ${groups}. These categories may overlap and must not be summed into a unique total.`,
+    )
+  }
+  if (plan.volunteers !== null) {
+    add('community.volunteers', `Recorded volunteer count is ${formatNumber(plan.volunteers)}; current availability is not established by this count.`)
+  }
+
+  if (plan.shelter.shelterCount !== null) {
+    add('shelter.reported-count', `Reported shelter count is ${formatNumber(plan.shelter.shelterCount)}.`)
+  }
+  if (plan.shelter.reportedCapacity !== null) {
+    add('shelter.reported-capacity', `Reported shelter capacity is ${formatNumber(plan.shelter.reportedCapacity)} places.`)
+  }
+  if (plan.shelter.coveragePercent !== null) {
+    add('shelter.reported-coverage', `Reported shelter capacity coverage is ${plan.shelter.coveragePercent.toFixed(1)}% of the recorded population.`)
+  }
+  if (plan.shelter.shortageConfirmed && plan.shelter.shortage !== null) {
+    add('shelter.confirmed-shortfall', `The reported shelter capacity has a confirmed shortfall of ${formatNumber(plan.shelter.shortage)} places.`)
+  }
+  add(
+    'shelter.operational-status',
+    'Shelter operational status is unknown. Reported shelter inventory and capacity do not establish whether any shelter is operational.',
+  )
+
+  const transportParts = [
+    plan.transport.cars === null ? null : `${formatNumber(plan.transport.cars)} cars or pickups`,
+    plan.transport.trucks === null ? null : `${formatNumber(plan.transport.trucks)} large vehicles`,
+    plan.transport.boats === null ? null : `${formatNumber(plan.transport.boats)} boats`,
+  ].filter((part): part is string => part !== null)
+  if (transportParts.length > 0) {
+    add('transport.reported-inventory', `Recorded transport inventory includes ${transportParts.join(', ')}.`)
+  }
+  add(
+    'transport.capacity-status',
+    'Transport carrying capacity and availability are unknown. Inventory counts do not establish people transportable, required trips, evacuation duration, or asset availability.',
+  )
+
+  add(
+    'resources.reported-supplies',
+    `Recorded supply statuses are water: ${community.water}; food: ${community.food}; medicine: ${community.medicine}; emergency equipment: ${community.equipment}.`,
+  )
+  add('planning.status', `Current deterministic evacuation planning status is ${plan.planningStatus.replace(/_/g, ' ')}.`)
+  if (plan.missingInformation.length > 0) {
+    add('planning.missing-information', `Current missing planning information: ${plan.missingInformation.join('; ')}.`)
+  }
+  if (plan.resourceWarnings.length > 0) {
+    add('planning.resource-warnings', `Current verified resource warnings: ${plan.resourceWarnings.join(' ')}`)
+  }
+  return facts
+}
+
 export function buildEvacuationChatPayload(
   message: string,
   conversationHistory: EvacuationChatHistoryMessage[],
@@ -92,7 +216,23 @@ export function buildEvacuationChatPayload(
     message: message.trim(),
     conversationHistory: capConversationHistory(conversationHistory),
     risk: serializeRisk(risk),
-    community: { ...community },
+    community: {
+      population: community.population,
+      children: community.children,
+      elderly: community.elderly,
+      disabled: community.disabled,
+      otherVulnerable: community.otherVulnerable,
+      volunteers: community.volunteers,
+      cars: community.cars,
+      trucks: community.trucks,
+      boats: community.boats,
+      shelters: community.shelters,
+      shelterCapacity: community.shelterCapacity,
+      water: community.water,
+      food: community.food,
+      medicine: community.medicine,
+      equipment: community.equipment,
+    },
     evacuationPlan,
     shelterGrounding: {
       reportedShelterCount: evacuationPlan.shelter.shelterCount,
@@ -100,6 +240,7 @@ export function buildEvacuationChatPayload(
       operationalStatus: 'UNKNOWN',
       operationalStatusMeaning: 'Reported shelter inventory and capacity do not establish whether any shelter is operational.',
     },
+    trustedFacts: buildEvacuationChatTrustedFacts(risk, community, evacuationPlan),
     allowedActions: evacuationPlan.allowedActions.map(({ id, text }) => ({ id, text })),
   }
 }
@@ -143,35 +284,16 @@ export function planningContextFingerprint(
   return JSON.stringify({
     risk: {
       status: risk.calculationStatus,
-      level: risk.hazardLevel,
-      score: risk.hazardScore,
-      confidence: Math.round(risk.confidenceScore),
-      engineVersion: risk.engineVersion,
+      hazardLevel: risk.hazardLevel,
+      hazardScore: risk.hazardScore,
+      confidenceScore: risk.confidenceScore,
+      contributingFactors: risk.contributingFactors,
+      riverTrend: risk.riverTrend.label,
     },
-    community: {
-      name: community.name,
-      population: community.population,
-      children: community.children,
-      elderly: community.elderly,
-      disabled: community.disabled,
-      otherVulnerable: community.otherVulnerable,
-      volunteers: community.volunteers,
-      cars: community.cars,
-      trucks: community.trucks,
-      boats: community.boats,
-      shelters: community.shelters,
-      shelterCapacity: community.shelterCapacity,
-      water: community.water,
-      food: community.food,
-      medicine: community.medicine,
-      equipment: community.equipment,
-    },
-    plan: {
-      status: plan.planningStatus,
-      shortage: plan.shelter.shortage,
-      missingInformation: plan.missingInformation,
-      allowedActions: plan.allowedActions.map(action => [action.id, action.text]),
-    },
+    community,
+    evacuationPlan: plan,
+    trustedFacts: buildEvacuationChatTrustedFacts(risk, community, plan),
+    allowedActions: plan.allowedActions.map(({ id, text }) => ({ id, text })),
   })
 }
 
@@ -180,13 +302,20 @@ function configuredChatWebhookUrl(): string {
   return environment?.VITE_EVACUATION_CHAT_WEBHOOK_URL?.trim() ?? ''
 }
 
-function parseChatResponse(body: unknown, plan: EvacuationPlanResult): EvacuationChatResult {
+function parseChatResponse(
+  body: unknown,
+  plan: EvacuationPlanResult,
+  trustedFacts: EvacuationChatTrustedFact[],
+): EvacuationChatResult {
   if (!body || typeof body !== 'object') {
     throw new EvacuationChatError('Chat workflow returned malformed JSON.')
   }
   const record = body as Record<string, unknown>
-  if (typeof record.answer !== 'string' || record.answer.trim() === '') {
-    throw new EvacuationChatError('Chat workflow returned an empty answer.')
+  if (record.factIds !== undefined && !Array.isArray(record.factIds)) {
+    throw new EvacuationChatError('Chat workflow returned malformed fact IDs.')
+  }
+  if (record.actionIds !== undefined && !Array.isArray(record.actionIds)) {
+    throw new EvacuationChatError('Chat workflow returned malformed action IDs.')
   }
   if (record.actions !== undefined && !Array.isArray(record.actions)) {
     throw new EvacuationChatError('Chat workflow returned malformed actions.')
@@ -197,13 +326,32 @@ function parseChatResponse(body: unknown, plan: EvacuationPlanResult): Evacuatio
   const rejectedActionIds = Array.isArray(validation.rejectedActionIds)
     ? validation.rejectedActionIds.filter((id): id is string => typeof id === 'string')
     : []
+  const trustedFactMap = new Map(trustedFacts.map(fact => [fact.id, fact]))
+  const seenFacts = new Set<string>()
+  const facts: EvacuationChatTrustedFact[] = []
+  const rejectedFactIds: string[] = []
+  for (const candidate of Array.isArray(record.factIds) ? record.factIds : []) {
+    if (typeof candidate !== 'string' || seenFacts.has(candidate)) continue
+    seenFacts.add(candidate)
+    const trusted = trustedFactMap.get(candidate)
+    if (trusted) facts.push(trusted)
+    else rejectedFactIds.push(candidate)
+  }
+
   const rejected = new Set(rejectedActionIds)
   const currentActions = new Map(plan.allowedActions.map(action => [action.id, action]))
   const seenActions = new Set<string>()
   const actions: AllowedAction[] = []
-  for (const candidate of Array.isArray(record.actions) ? record.actions : []) {
-    if (!candidate || typeof candidate !== 'object') continue
-    const id = (candidate as Record<string, unknown>).id
+  const actionCandidates: unknown[] = [
+    ...(Array.isArray(record.actionIds) ? record.actionIds : []),
+    ...(Array.isArray(record.actions) ? record.actions : []),
+  ]
+  for (const candidate of actionCandidates) {
+    const id = typeof candidate === 'string'
+      ? candidate
+      : candidate && typeof candidate === 'object'
+        ? (candidate as Record<string, unknown>).id
+        : null
     if (typeof id !== 'string' || rejected.has(id) || seenActions.has(id)) continue
     const trusted = currentActions.get(id as AllowedAction['id'])
     if (!trusted) continue
@@ -224,9 +372,10 @@ function parseChatResponse(body: unknown, plan: EvacuationPlanResult): Evacuatio
     })
 
   return {
-    answer: record.answer.trim(),
+    facts,
     actions,
     missingInformation,
+    rejectedFactIds,
     rejectedActionIds,
   }
 }
@@ -254,7 +403,7 @@ export async function requestEvacuationChat(
     } catch {
       throw new EvacuationChatError('Chat workflow returned malformed JSON.')
     }
-    return parseChatResponse(body, currentPlan)
+    return parseChatResponse(body, currentPlan, payload.trustedFacts)
   } catch (error) {
     if (error instanceof EvacuationChatError) throw error
     if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {

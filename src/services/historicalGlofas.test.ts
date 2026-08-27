@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ENVIRONMENTAL_REQUEST_TIMEOUT_MS } from './config'
 import { buildHistoricalBaseline, fetchHistoricalBaseline } from './historicalGlofas'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 describe('historical GloFAS baseline', () => {
   it('filters finite primary discharge to the forecast calendar month and records coverage', () => {
@@ -60,5 +64,36 @@ describe('historical GloFAS baseline', () => {
     expect(requestUrl.searchParams.get('start_date')).toBe('1984-01-01')
     expect(requestUrl.searchParams.get('end_date')).toBe('2025-12-31')
     expect(requestUrl.searchParams.has('river_discharge_p25')).toBe(false)
+  })
+
+  it('times out historical GloFAS gracefully and clears the in-flight request', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-19T00:00:00.000Z'))
+    const hangingFetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => (
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true },
+        )
+      })
+    ))
+    vi.stubGlobal('fetch', hangingFetch)
+
+    const pending = fetchHistoricalBaseline(17.5, 96, '2026-08-19')
+    const rejected = expect(pending).rejects.toThrow(
+      `Historical GloFAS request timed out after ${ENVIRONMENTAL_REQUEST_TIMEOUT_MS} ms`,
+    )
+    await vi.advanceTimersByTimeAsync(ENVIRONMENTAL_REQUEST_TIMEOUT_MS)
+    await rejected
+
+    const retryFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      daily: { time: [], river_discharge: [] },
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', retryFetch)
+
+    await fetchHistoricalBaseline(17.5, 96, '2026-08-19')
+    expect(retryFetch).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

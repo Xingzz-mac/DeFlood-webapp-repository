@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactTestRenderer } from 'react-test-renderer'
 import { CommunityProvider } from './CommunityContext'
 import { RiskProvider, useRisk } from './RiskContext'
+import { WEATHER_MAX_STALE_MS } from '../services/config'
 import { RISK_RECALCULATION_INTERVAL_MS } from '../services/riskConfig'
 import type { HistoricalBaseline, RiskResult } from '../services/riskTypes'
 import type { EnvironmentalData, RiverDay, SourceMetadata, WeatherModelData } from '../services/types'
@@ -182,5 +183,45 @@ describe('RiskProvider freshness clock', () => {
 
     await act(async () => renderer?.unmount())
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('expires current evidence from the local clock without starting a periodic fetch loop', async () => {
+    let latestRisk: RiskResult | null = null
+    function Consumer() {
+      latestRisk = useRisk()
+      return null
+    }
+
+    let renderer: ReactTestRenderer | null = null
+    await act(async () => {
+      renderer = create(
+        <CommunityProvider>
+          <RiskProvider>
+            <Consumer />
+          </RiskProvider>
+        </CommunityProvider>,
+      )
+      await Promise.resolve()
+    })
+
+    expect((latestRisk as RiskResult | null)?.calculationStatus).toBe('COMPLETE')
+    expect(environmentalServiceMocks.fetchEnvironmentalData).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        WEATHER_MAX_STALE_MS + RISK_RECALCULATION_INTERVAL_MS,
+      )
+    })
+
+    const expired = latestRisk as RiskResult | null
+    expect(expired?.freshness.sources.aifs.usable).toBe(false)
+    expect(expired?.freshness.sources.ifs.usable).toBe(false)
+    expect(expired?.calculationStatus).toBe('INCOMPLETE')
+    expect(expired?.hazardScore).toBeNull()
+    expect(environmentalServiceMocks.fetchEnvironmentalData).toHaveBeenCalledTimes(1)
+    expect(historicalServiceMocks.fetchHistoricalBaseline).not.toHaveBeenCalled()
+    expect(historicalServiceMocks.readHistoricalBaseline).toHaveBeenCalledTimes(1)
+
+    await act(async () => renderer?.unmount())
   })
 })

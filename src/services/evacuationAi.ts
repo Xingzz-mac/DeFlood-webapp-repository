@@ -26,6 +26,10 @@ function nonNegative(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
 }
 
+function reportedStatus(value: string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null
+}
+
 export function buildEvacuationAiPayload(
   plan: EvacuationPlanResult,
   community: EvacuationCommunityInput,
@@ -40,10 +44,19 @@ export function buildEvacuationAiPayload(
     elderly: nonNegative(community.elderly),
     children: nonNegative(community.children),
     peopleWithDisabilities: nonNegative(community.disabled),
+    otherVulnerable: nonNegative(community.otherVulnerable),
+    volunteers: plan.volunteers,
+    cars: plan.transport.cars,
+    trucks: plan.transport.trucks,
     boats: plan.transport.boats,
     vehicles: plan.transport.vehicles,
+    shelterCount: plan.shelter.shelterCount,
     shelterCapacity: plan.shelter.reportedCapacity,
     shelterShortage: plan.shelter.shortage,
+    water: reportedStatus(community.water),
+    food: reportedStatus(community.food),
+    medicine: reportedStatus(community.medicine),
+    equipment: reportedStatus(community.equipment),
     riverTrend: risk.riverTrend.label,
     allowedActions: plan.allowedActions.map(({ id, text }) => ({ id, text })),
   }

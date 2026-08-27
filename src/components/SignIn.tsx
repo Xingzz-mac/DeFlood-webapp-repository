@@ -90,15 +90,16 @@ export default function SignIn({ onSignIn }: SignInProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">PIN</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Demonstration PIN</label>
               <input
                 type="password"
                 value={pin}
                 onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="Enter PIN"
+                placeholder="Enter demo PIN"
                 inputMode="numeric"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm font-mono tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <p className="mt-1 text-xs text-gray-500">Demo only — this PIN is not a security credential.</p>
             </div>
 
             {error && <p className="text-red-600 text-sm font-medium">{error}</p>}
@@ -113,7 +114,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
         </div>
 
         <p className="text-blue-300 text-xs text-center mt-5">
-          Authorised users only. Contact your community administrator for access.
+          Prototype access — roles are simulated for demonstration.
         </p>
       </div>
     </div>
