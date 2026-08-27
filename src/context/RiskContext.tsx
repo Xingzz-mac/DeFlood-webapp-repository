@@ -29,6 +29,7 @@ export interface RiskContextValue extends RiskResult {
 }
 
 const RiskContext = createContext<RiskContextValue | null>(null)
+const RiskViewContext = createContext<RiskContextValue | null>(null)
 
 export function RiskProvider({ children }: { children: ReactNode }) {
   const { community } = useCommunity()
@@ -124,7 +125,25 @@ export function RiskProvider({ children }: { children: ReactNode }) {
 }
 
 export function useRisk(): RiskContextValue {
-  const context = useContext(RiskContext)
+  const selected = useContext(RiskViewContext)
+  const live = useContext(RiskContext)
+  const context = selected ?? live
   if (!context) throw new Error('useRisk must be used within RiskProvider')
   return context
+}
+
+export function useLiveRisk(): RiskContextValue {
+  const context = useContext(RiskContext)
+  if (!context) throw new Error('useLiveRisk must be used within RiskProvider')
+  return context
+}
+
+export function RiskViewProvider({
+  value,
+  children,
+}: {
+  value: RiskContextValue
+  children: ReactNode
+}) {
+  return <RiskViewContext.Provider value={value}>{children}</RiskViewContext.Provider>
 }

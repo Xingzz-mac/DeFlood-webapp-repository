@@ -1,0 +1,266 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { CommunityData } from '../context/CommunityContext'
+import { calculateEvacuationPlan } from './evacuationEngine'
+import {
+  buildEvacuationChatPayload,
+  capConversationHistory,
+  requestEvacuationChat,
+  suggestedEvacuationChatQuestions,
+  type EvacuationChatHistoryMessage,
+} from './evacuationChat'
+import { DEMO_RISK_FIXTURES } from './riskScenarios'
+
+const community: CommunityData = {
+  name: 'Test Community',
+  township: 'Test Township',
+  region: 'Test Region',
+  population: 2000,
+  children: 320,
+  elderly: 140,
+  disabled: 65,
+  otherVulnerable: 20,
+  leader: 'Leader',
+  mayor: 'Mayor',
+  assistant: 'Assistant',
+  phone: '000',
+  volunteers: 25,
+  cars: 2,
+  trucks: 2,
+  boats: 2,
+  shelters: 2,
+  shelterCapacity: 1200,
+  water: 'Adequate',
+  food: 'Adequate',
+  medicine: 'Adequate',
+  equipment: 'Adequate',
+  latitude: 16.5,
+  longitude: 95,
+  locationSource: 'manual',
+  locationAccuracy: null,
+  locationUpdatedAt: null,
+}
+
+const highRisk = DEMO_RISK_FIXTURES['demo-high']
+const highPlan = calculateEvacuationPlan(community, highRisk)
+
+function response(body: unknown, ok = true, status = 200): Response {
+  return { ok, status, json: async () => body } as Response
+}
+
+describe('evacuation planning chat service', () => {
+  it('builds a request with chat-safe risk, community, plan, and contextual allowed actions', () => {
+    const payload = buildEvacuationChatPayload(
+      'What should I verify?',
+      [{ role: 'assistant', content: 'Earlier answer' }],
+      highRisk,
+      community,
+      highPlan,
+    )
+    expect(payload).toMatchObject({
+      message: 'What should I verify?',
+      risk: {
+        status: 'COMPLETE',
+        hazardLevel: 'HIGH',
+        hazardScore: 82,
+        confidenceScore: 72,
+        supportingFacts: highRisk.contributingFactors,
+        unavailableFacts: [],
+      },
+      community: { population: 2000, shelterCapacity: 1200 },
+      evacuationPlan: { planningStatus: 'URGENT_PLANNING', shelter: { shortage: 800 } },
+      shelterGrounding: {
+        reportedShelterCount: 2,
+        reportedShelterCapacity: 1200,
+        operationalStatus: 'UNKNOWN',
+      },
+    })
+    expect(payload.allowedActions).toEqual(
+      highPlan.allowedActions.map(({ id, text }) => ({ id, text })),
+    )
+  })
+
+  it('excludes internal risk implementation details from the chat POST body', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({
+      answer: 'The current verified hazard is HIGH.',
+      actions: [],
+    }))
+    const payload = buildEvacuationChatPayload('Explain the risk', [], highRisk, community, highPlan)
+    await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher,
+    })
+
+    const requestBody = fetcher.mock.calls[0]?.[1]?.body
+    expect(typeof requestBody).toBe('string')
+    const posted = JSON.parse(requestBody as string)
+    expect(posted.risk).toEqual({
+      status: 'COMPLETE',
+      hazardLevel: 'HIGH',
+      hazardScore: 82,
+      confidenceScore: 72,
+      confidenceLabel: 'Data Confidence (evidence quality, not flood probability)',
+      supportingFacts: highRisk.contributingFactors,
+      unavailableFacts: [],
+    })
+    expect(JSON.stringify(posted.risk)).not.toContain('effectiveWeights')
+    expect(JSON.stringify(posted.risk)).not.toContain('baseWeight')
+    expect(JSON.stringify(posted.risk)).not.toContain('components')
+    expect(JSON.stringify(posted.risk)).not.toContain('engineVersion')
+    expect(JSON.stringify(posted.risk)).not.toContain('threshold')
+  })
+
+  it('marks detailed supporting evidence unavailable when no trusted facts exist', () => {
+    const riskWithoutFacts = { ...highRisk, contributingFactors: [] }
+    const payload = buildEvacuationChatPayload(
+      'Why is the risk high?',
+      [],
+      riskWithoutFacts,
+      community,
+      highPlan,
+    )
+    expect(payload.risk.supportingFacts).toEqual([])
+    expect(payload.risk.unavailableFacts).toEqual([
+      'Detailed supporting evidence is unavailable. Direct the user to View supporting data.',
+    ])
+  })
+
+  it('keeps reported shelter facts separate from unknown operational status', () => {
+    const payload = buildEvacuationChatPayload('Are shelters operational?', [], highRisk, community, highPlan)
+    expect(payload.shelterGrounding).toEqual({
+      reportedShelterCount: 2,
+      reportedShelterCapacity: 1200,
+      operationalStatus: 'UNKNOWN',
+      operationalStatusMeaning: 'Reported shelter inventory and capacity do not establish whether any shelter is operational.',
+    })
+    const shelterGrounding = JSON.stringify(payload.shelterGrounding).toLowerCase()
+    expect(shelterGrounding).not.toContain('zero operational')
+    expect(shelterGrounding).not.toContain('no shelters operational')
+    expect(shelterGrounding).not.toContain('shelters closed')
+  })
+
+  it('does not fetch environmental data while building or posting a chat request', async () => {
+    const environmentalFetcher = vi.spyOn(globalThis, 'fetch')
+    const chatFetcher = vi.fn().mockResolvedValue(response({ answer: 'Verified answer.', actions: [] }))
+    const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+    await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher: chatFetcher,
+    })
+    expect(chatFetcher).toHaveBeenCalledTimes(1)
+    expect(environmentalFetcher).not.toHaveBeenCalled()
+    environmentalFetcher.mockRestore()
+  })
+
+  it('suggests a shelter question when reported shelter information exists', () => {
+    expect(suggestedEvacuationChatQuestions(highRisk, highPlan)).toContain(
+      'Do we have enough shelter capacity?',
+    )
+  })
+
+  it('uses evidence-oriented suggestions for INCOMPLETE risk without HIGH wording', () => {
+    const incomplete = DEMO_RISK_FIXTURES['demo-incomplete']
+    const plan = calculateEvacuationPlan(community, incomplete)
+    const suggestions = suggestedEvacuationChatQuestions(incomplete, plan)
+    expect(suggestions).toContain('What information is missing?')
+    expect(suggestions).toContain('Why can’t flood hazard be calculated?')
+    expect(suggestions.join(' ')).not.toContain('HIGH')
+  })
+
+  it('accepts an answer and renders only current trusted action text once', async () => {
+    const trusted = highPlan.allowedActions.find(action => action.id === 'verify-transport-capacity')
+    const fetcher = vi.fn().mockResolvedValue(response({
+      answer: 'Transport inventory is recorded, but carrying capacity remains unknown.',
+      actions: [
+        { id: 'verify-transport-capacity', text: 'Invented wording' },
+        { id: 'verify-transport-capacity', text: 'Duplicate wording' },
+      ],
+      missingInformation: ['Vehicle carrying capacity', 'Invented missing fact'],
+      validation: { rejectedActionIds: [] },
+    }))
+    const payload = buildEvacuationChatPayload('What about transport?', [], highRisk, community, highPlan)
+    const result = await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher,
+    })
+    expect(result.answer).toBe('Transport inventory is recorded, but carrying capacity remains unknown.')
+    expect(result.actions).toEqual([trusted])
+    expect(result.actions[0]?.text).not.toBe('Invented wording')
+    expect(result.missingInformation).toEqual(['Vehicle carrying capacity'])
+  })
+
+  it('ignores unknown and rejected action IDs', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({
+      answer: 'Only validated current actions can be surfaced.',
+      actions: [
+        { id: 'invent-route', text: 'Invent a route' },
+        { id: 'verify-transport-capacity', text: 'Valid ID' },
+      ],
+      validation: { rejectedActionIds: ['verify-transport-capacity'] },
+    }))
+    const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+    const result = await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher,
+    })
+    expect(result.actions).toEqual([])
+    expect(result.rejectedActionIds).toEqual(['verify-transport-capacity'])
+  })
+
+  it('rejects malformed responses and empty answers gracefully', async () => {
+    const malformedFetcher = vi.fn().mockResolvedValue(response({ answer: 'Okay', actions: 'bad' }))
+    const emptyFetcher = vi.fn().mockResolvedValue(response({ answer: '   ', actions: [] }))
+    const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+    await expect(requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher: malformedFetcher,
+    })).rejects.toThrow('malformed actions')
+    await expect(requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher: emptyFetcher,
+    })).rejects.toThrow('empty answer')
+  })
+
+  it('handles timeout and network failure without modifying the deterministic plan', async () => {
+    vi.useFakeTimers()
+    const timeoutFetcher = vi.fn((_url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    })) as typeof fetch
+    const payload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+    const request = requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher: timeoutFetcher,
+      timeoutMs: 100,
+    })
+    const timeoutExpectation = expect(request).rejects.toThrow('timed out')
+    await vi.advanceTimersByTimeAsync(100)
+    await timeoutExpectation
+    vi.useRealTimers()
+
+    const networkFetcher = vi.fn().mockRejectedValue(new TypeError('offline'))
+    await expect(requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher: networkFetcher,
+    })).rejects.toThrow('workflow could not be reached')
+    expect(highPlan.planningStatus).toBe('URGENT_PLANNING')
+    expect(highPlan.shelter.shortage).toBe(800)
+  })
+
+  it('caps conversation history to the most recent ten messages', () => {
+    const history: EvacuationChatHistoryMessage[] = Array.from({ length: 14 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `message-${index}`,
+    }))
+    const capped = capConversationHistory(history)
+    expect(capped).toHaveLength(10)
+    expect(capped[0]?.content).toBe('message-4')
+    expect(capped[9]?.content).toBe('message-13')
+  })
+
+  it('does not recalculate or mutate the supplied risk and plan while building payloads', () => {
+    const riskBefore = JSON.stringify(highRisk)
+    const planBefore = JSON.stringify(highPlan)
+    buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+    expect(JSON.stringify(highRisk)).toBe(riskBefore)
+    expect(JSON.stringify(highPlan)).toBe(planBefore)
+  })
+})

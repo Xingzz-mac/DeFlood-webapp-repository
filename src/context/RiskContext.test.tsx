@@ -1,7 +1,10 @@
 import { act, create } from 'react-test-renderer'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CommunityProvider } from './CommunityContext'
-import { RiskProvider, useRisk } from './RiskContext'
+import { CommunityProvider, useCommunity } from './CommunityContext'
+import { RiskProvider, useLiveRisk, useRisk, type RiskContextValue } from './RiskContext'
+import { EvacuationProvider, useEvacuationPlan } from './EvacuationContext'
+import { RiskScenarioProvider } from './RiskScenarioContext'
+import EvacuationChat from '../components/EvacuationChat'
 
 const useEnvironmentalDataMock = vi.hoisted(() => vi.fn())
 
@@ -21,11 +24,24 @@ describe('RiskProvider environmental ownership', () => {
     })
   })
 
-  it('creates one shared environmental-data hook instance for multiple consumers', async () => {
+  it('keeps one environmental-data hook instance for risk and evacuation consumers', async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+    let liveRisk: RiskContextValue | null = null
+    let selectedRisk: RiskContextValue | null = null
     function Consumer() {
-      useRisk()
+      liveRisk = useLiveRisk()
+      selectedRisk = useRisk()
       return null
+    }
+    function PlanningConsumer() {
+      useEvacuationPlan()
+      return null
+    }
+    function ChatConsumer() {
+      const risk = useRisk()
+      const plan = useEvacuationPlan()
+      const { community } = useCommunity()
+      return <EvacuationChat risk={risk} plan={plan} community={community} />
     }
 
     let renderer: ReturnType<typeof create> | null = null
@@ -33,14 +49,21 @@ describe('RiskProvider environmental ownership', () => {
       renderer = create(
         <CommunityProvider>
           <RiskProvider>
-            <Consumer />
-            <Consumer />
+            <RiskScenarioProvider>
+              <EvacuationProvider>
+                <Consumer />
+                <Consumer />
+                <PlanningConsumer />
+                <ChatConsumer />
+              </EvacuationProvider>
+            </RiskScenarioProvider>
           </RiskProvider>
         </CommunityProvider>,
       )
     })
 
     expect(useEnvironmentalDataMock).toHaveBeenCalledTimes(1)
+    expect(selectedRisk).toBe(liveRisk)
     await act(async () => renderer?.unmount())
   })
 })

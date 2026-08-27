@@ -11,6 +11,9 @@ import CommunityInfo from './components/CommunityInfo'
 import Settings from './components/Settings'
 import { IconMenu } from './components/Icons'
 import { RiskProvider } from './context/RiskContext'
+import { EvacuationProvider } from './context/EvacuationContext'
+import { RiskScenarioProvider } from './context/RiskScenarioContext'
+import DevelopmentScenarioSelector from './components/DevelopmentScenarioSelector'
 
 export type Role = 'leader' | 'mayor' | 'assistant' | 'ngo' | 'government'
 export type Section = 'dashboard' | 'risk' | 'evacuation' | 'map' | 'support' | 'community' | 'settings'
@@ -38,14 +41,18 @@ export default function App() {
 
   return (
     <RiskProvider>
-      <SignedInApplication
-        user={user}
-        section={section}
-        mobileOpen={mobileOpen}
-        setMobileOpen={setMobileOpen}
-        setSection={setSection}
-        onSignOut={() => setUser(null)}
-      />
+      <RiskScenarioProvider>
+        <EvacuationProvider>
+          <SignedInApplication
+            user={user}
+            section={section}
+            mobileOpen={mobileOpen}
+            setMobileOpen={setMobileOpen}
+            setSection={setSection}
+            onSignOut={() => setUser(null)}
+          />
+        </EvacuationProvider>
+      </RiskScenarioProvider>
     </RiskProvider>
   )
 }
@@ -129,6 +136,8 @@ function SignedInApplication({
           <span className="font-bold text-sm tracking-tight">DeFlood.AI</span>
           <div className="w-8" />
         </div>
+
+        {import.meta.env.DEV && <DevelopmentScenarioSelector />}
 
         {/* Scrollable page content */}
         <main className="flex-1 overflow-y-auto">

@@ -25,7 +25,7 @@ DeFlood.AI is a React, Vite, TypeScript, and Tailwind prototype for community fl
 - Partial source failures do not block successful sources.
 - Request sequencing prevents an older coordinate response from replacing a newer one.
 
-The Risk Assessment screen presents the shared deterministic result alongside raw source values and source metadata.
+The Risk Assessment screen leads with Flood Hazard, Data Confidence, plain-language meaning, contributing factors, and next steps. Raw source values and metadata remain available in a collapsed supporting-data section.
 
 ### Stage 2B — weather-model agreement
 
@@ -48,18 +48,44 @@ The Risk Assessment screen presents the shared deterministic result alongside ra
 
 All current thresholds and weights are prototype decision-support heuristics that require regional calibration and operational validation.
 
+### Stage 3 — deterministic evacuation and resource planning
+
+- A separate deterministic planning engine consumes the shared Stage 2 risk result and saved Community Information without fetching environmental data again.
+- Planning states are `NOT_READY`, `PREPAREDNESS`, `READINESS`, and `URGENT_PLANNING`; they are not official evacuation-order states.
+- Shelter shortage and coverage use only reported population and shelter capacity.
+- Cars, trucks, and boats remain inventory counts. Carrying capacity, trips, duration, and transport shortage are not inferred.
+- Priority groups remain separate because children, elderly residents, people with disabilities, and other vulnerable residents may overlap.
+- Missing information, confirmed resource warnings, and planning actions are selected by deterministic code from a trusted action registry.
+- The Evacuation Planner remains usable without AI or network access.
+- Support Network only displays confirmed deterministic gaps and does not send requests.
+
+### Optional AI-assisted planning
+
+The frontend can call the existing externally managed n8n/Groq workflow through:
+
+```bash
+VITE_EVACUATION_WEBHOOK_URL=https://your-stable-production-webhook.example
+```
+
+Copy `.env.example` to a local `.env` and set the stable production webhook URL. Do not commit temporary Cloudflare Quick Tunnel URLs.
+
+The request contains deterministic risk, community, resource, and trusted `allowedActions` values. Only final validated `output.actions` selections are accepted. Unknown or rejected IDs and model-authored factual replacements are ignored. Timeouts, offline workflows, invalid JSON, and malformed responses fall back to the deterministic planner.
+
+For production browser calls, configure the n8n webhook or its reverse proxy to allow the deployed frontend origin with appropriate CORS headers. The frontend does not use `no-cors` or an insecure CORS workaround.
+
 ## Prototype-only screens
 
 - The Flood Map contains one neutral current-community marker. All other markers, risk colors, shelters, and overlays are labelled sample data.
 - The NGO dashboard is explicitly sample data and has no live support workflow.
-- The evacuation screen is a resource-input prototype. Operational recommendations are disabled.
-- Support requests remain browser-local prototype state and are not sent externally.
+- The evacuation screen provides deterministic planning guidance but never issues official orders, routes, or departure times.
+- Support requests are not routed or stored externally.
 
 ## Not implemented yet
 
-- An evacuation recommendation engine.
 - A live NGO/support workflow.
-- Backend authentication, a database, n8n, or Groq integration.
+- Backend authentication or a shared database.
+- Automatic evacuation orders, routes, notifications, SMS, or USSD.
+- A frontend-managed n8n/Groq workflow; the optional client expects the existing external validated workflow.
 
 ## Development
 

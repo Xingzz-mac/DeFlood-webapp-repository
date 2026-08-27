@@ -151,13 +151,6 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
         <p className="text-gray-500 text-sm mt-0.5">Update community details used for source-data requests and planning prototypes</p>
       </div>
 
-      {saved && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3 mb-4 flex items-center gap-2 text-green-800 text-sm font-medium">
-          <IconCheckCircle size={16} />
-          Information saved successfully
-        </div>
-      )}
-
       <form onSubmit={handleSave} className="space-y-4">
         <Section title="Community Details" icon={<IconBuilding size={17} />}>
           <div className="grid sm:grid-cols-2 gap-4">
@@ -264,12 +257,22 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
           </div>
         </Section>
 
-        <button
-          type="submit"
-          className="bg-[#1e3a5f] hover:bg-[#2d5282] text-white font-semibold px-8 py-3 rounded-xl text-sm transition-colors"
-        >
-          Save Community Information
-        </button>
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <button
+            type="submit"
+            className="bg-[#1e3a5f] hover:bg-[#2d5282] text-white font-semibold px-8 py-3 rounded-xl text-sm transition-colors"
+          >
+            Save Community Information
+          </button>
+          <div aria-live="polite" className="min-h-5">
+            {saved && (
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-green-700">
+                <IconCheckCircle size={15} />
+                Information saved successfully
+              </span>
+            )}
+          </div>
+        </div>
       </form>
     </div>
   )

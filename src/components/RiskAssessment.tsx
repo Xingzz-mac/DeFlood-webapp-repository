@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
+import { riskMeaning, riskNextStep } from '../services/riskPresentation'
 import type {
   RiverData,
   SourceMetadata,
@@ -221,7 +222,7 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
     <div className="mx-auto max-w-4xl p-4 md:p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Environmental Source Data</h1>
+          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Risk Assessment</h1>
           <p className="mt-0.5 text-sm text-gray-500">
             {community.name} · {community.latitude.toFixed(4)}, {community.longitude.toFixed(4)}
           </p>
@@ -285,19 +286,43 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Data Confidence</div>
           <div className="mt-1"><ScoreValue value={risk.calculationStatus === 'NOT_CALCULATED' ? null : risk.confidenceScore} /></div>
           <p className="mt-2 text-xs text-gray-500">Evidence quality, not flood probability.</p>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
-            <span>Completeness: {risk.confidenceComponents.completeness.toFixed(1)}</span>
-            <span>Agreement: {risk.confidenceComponents.modelAgreement?.toFixed(1) ?? '—'}</span>
-            <span>Ensemble: {risk.confidenceComponents.ensembleConsistency?.toFixed(1) ?? '—'}</span>
-            <span>Freshness: {risk.confidenceComponents.freshness.toFixed(1)}</span>
+        </div>
+      </div>
+
+      <div className="mb-5 grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">What this means</div>
+          <p className="mt-2 text-sm leading-relaxed text-gray-700">{riskMeaning(risk)}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Next step</div>
+          <p className="mt-2 text-sm text-gray-700">{riskNextStep(risk)}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {risk.calculationStatus === 'COMPLETE' && risk.hazardLevel !== 'LOW' && (
+              <button
+                type="button"
+                onClick={() => onNavigate('evacuation')}
+                className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2d5282]"
+              >
+                Open Evacuation Planner
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={risk.refresh}
+              disabled={risk.loading}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Refresh data
+            </button>
           </div>
         </div>
       </div>
 
       <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="font-semibold text-gray-900">Deterministic contributing factors</h2>
+        <h2 className="font-semibold text-gray-900">Why this result</h2>
         <ul className="mt-3 space-y-2 text-sm text-gray-600">
-          {risk.contributingFactors.map(factor => (
+          {risk.contributingFactors.slice(0, 5).map(factor => (
             <li key={factor} className="flex gap-2">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600" />
               <span>{factor}</span>
@@ -306,8 +331,26 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
         </ul>
       </div>
 
-      {data && (
-        <div className="space-y-4">
+      <details className="rounded-2xl border border-gray-200 bg-white">
+        <summary className="cursor-pointer list-none rounded-2xl px-5 py-4 text-sm font-semibold text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+          View supporting data
+        </summary>
+        <div className="space-y-4 border-t border-gray-100 p-4 md:p-5">
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <h2 className="font-semibold text-gray-900">Data quality</h2>
+            <div className="mt-3 grid gap-2 text-sm text-gray-600 sm:grid-cols-2">
+              <span>Completeness: {risk.confidenceComponents.completeness.toFixed(1)} / 100</span>
+              <span>Model agreement: {risk.confidenceComponents.modelAgreement?.toFixed(1) ?? 'Unavailable'}</span>
+              <span>Ensemble consistency: {risk.confidenceComponents.ensembleConsistency?.toFixed(1) ?? 'Unavailable'}</span>
+              <span>Freshness: {risk.confidenceComponents.freshness.toFixed(1)} / 100</span>
+              <span>AIFS: {risk.sourceInformation.aifs}</span>
+              <span>IFS: {risk.sourceInformation.ifs}</span>
+              <span>River: {risk.sourceInformation.river}</span>
+              <span>Elevation: {risk.sourceInformation.elevation}</span>
+            </div>
+          </div>
+          {data ? (
+            <>
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
             <h2 className="font-semibold text-gray-900">Weather consensus and agreement</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -362,35 +405,27 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
             <p className="mt-3 text-xs text-gray-500">The percentile describes historical same-season discharge unusualness, not flood probability.</p>
           </div>
           <TerrainCard terrain={data.terrain} />
-          <div className="rounded-2xl border border-gray-200 bg-white p-5">
-            <h2 className="font-semibold text-gray-900">Hazard components</h2>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm text-gray-600">
+          <details className="rounded-2xl border border-gray-200 bg-white">
+            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+              How the risk score was calculated
+            </summary>
+            <div className="grid gap-2 border-t border-gray-100 p-5 text-sm text-gray-600 sm:grid-cols-2">
               {Object.entries(risk.components).map(([name, component]) => (
                 <div key={name} className="rounded-lg bg-gray-50 p-3">
                   <div className="capitalize">{name.replace(/([A-Z])/g, ' $1')}</div>
                   <div className="font-mono font-semibold text-gray-900">{component.score?.toFixed(1) ?? 'Unavailable'}</div>
                   <div className="text-xs">Effective weight: {(component.effectiveWeight * 100).toFixed(1)}%</div>
+                  <div className="text-xs">Contribution: {component.score === null ? 'Unavailable' : (component.score * component.effectiveWeight).toFixed(1)}</div>
                 </div>
               ))}
             </div>
-          </div>
+          </details>
+            </>
+          ) : (
+            <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">Supporting environmental data is not available yet.</p>
+          )}
         </div>
-      )}
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button
-          onClick={() => onNavigate('evacuation')}
-          className="rounded-xl bg-[#1e3a5f] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2d5282]"
-        >
-          Open Evacuation Prototype
-        </button>
-        <button
-          onClick={() => onNavigate('support')}
-          className="rounded-xl border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-        >
-          Open Support Prototype
-        </button>
-      </div>
+      </details>
     </div>
   )
 }

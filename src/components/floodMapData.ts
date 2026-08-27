@@ -1,5 +1,5 @@
 export type SampleRisk = 'LOW' | 'MEDIUM' | 'HIGH'
-export type MapRisk = SampleRisk | 'NOT_CALCULATED'
+export type MapRisk = SampleRisk | 'INCOMPLETE' | 'NOT_CALCULATED'
 
 export interface MapCommunity {
   id: string
@@ -24,7 +24,13 @@ const sampleCommunities: MapCommunity[] = [
 export function buildMapCommunities(current: {
   name: string
   population: number
+}, currentRisk?: {
+  calculationStatus: 'NOT_CALCULATED' | 'INCOMPLETE' | 'COMPLETE'
+  hazardLevel: SampleRisk | null
 }): MapCommunity[] {
+  const risk: MapRisk = currentRisk?.calculationStatus === 'COMPLETE'
+    ? currentRisk.hazardLevel ?? 'NOT_CALCULATED'
+    : currentRisk?.calculationStatus ?? 'NOT_CALCULATED'
   return [
     {
       id: 'current',
@@ -32,10 +38,12 @@ export function buildMapCommunities(current: {
       name: current.name,
       x: 44,
       y: 43,
-      risk: 'NOT_CALCULATED',
+      risk,
       population: current.population,
       needs: 'No operational requirement calculated',
-      status: 'Monitoring / Prototype',
+      status: currentRisk?.calculationStatus === 'COMPLETE'
+        ? 'Shared deterministic Flood Hazard'
+        : 'Monitoring / Prototype',
     },
     ...sampleCommunities,
   ]

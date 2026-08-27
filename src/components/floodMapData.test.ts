@@ -13,4 +13,15 @@ describe('current-community map data', () => {
       needs: 'No operational requirement calculated',
     })
   })
+
+  it('uses the shared complete Flood Hazard for the current community', () => {
+    const current = buildMapCommunities(
+      { name: 'Current Community', population: 1234 },
+      { calculationStatus: 'COMPLETE', hazardLevel: 'MEDIUM' },
+    )[0]
+
+    expect(current.risk).toBe('MEDIUM')
+    expect(current.status).toBe('Shared deterministic Flood Hazard')
+    expect(current.needs).toBe('No operational requirement calculated')
+  })
 })

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCommunity } from '../context/CommunityContext'
+import { useRisk } from '../context/RiskContext'
 import { buildMapCommunities, type MapRisk } from './floodMapData'
 import RiskBadge from './RiskBadge'
 
@@ -7,12 +8,17 @@ const riskFill: Record<MapRisk, string> = {
   LOW: '#16a34a',
   MEDIUM: '#d97706',
   HIGH: '#dc2626',
+  INCOMPLETE: '#64748b',
   NOT_CALCULATED: '#2563eb',
 }
 
 export default function FloodMap() {
   const { community: shared } = useCommunity()
-  const communities = buildMapCommunities(shared)
+  const risk = useRisk()
+  const communities = buildMapCommunities(shared, {
+    calculationStatus: risk.calculationStatus,
+    hazardLevel: risk.hazardLevel,
+  })
   const [selectedId, setSelectedId] = useState('current')
   const selected = communities.find(community => community.id === selectedId) ?? communities[0]
 
@@ -20,7 +26,7 @@ export default function FloodMap() {
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <div className="mb-5">
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Community Flood Map</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Prototype map — only the blue marker represents the saved current community</p>
+        <p className="text-gray-500 text-sm mt-0.5">Prototype map — the saved current-community marker uses the shared deterministic Flood Hazard</p>
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
           All other communities, risk colors, shelters, and flood overlays are clearly marked sample data and are not live.
         </div>
@@ -97,7 +103,10 @@ export default function FloodMap() {
 
           {/* Legend */}
           <div className="px-5 py-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-600">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-600 inline-block" /> Current community — risk not calculated</span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-full" style={{ background: riskFill[communities[0].risk] }} />
+              Current community — {communities[0].risk.replace(/_/g, ' ').toLowerCase()}
+            </span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> Sample high</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> Sample medium</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> Sample low</span>
@@ -112,10 +121,12 @@ export default function FloodMap() {
           <div className="bg-white border border-gray-200 rounded-2xl p-5">
             <div className="flex items-start justify-between gap-2 mb-3">
               <h2 className="font-bold text-gray-900 text-sm leading-tight">{selected.name}</h2>
-              {selected.kind === 'sample' ? (
+              {selected.kind === 'sample' || selected.risk === 'LOW' || selected.risk === 'MEDIUM' || selected.risk === 'HIGH' ? (
                 <RiskBadge level={selected.risk as 'LOW' | 'MEDIUM' | 'HIGH'} size="sm" />
               ) : (
-                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">Risk not calculated</span>
+                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                  {selected.risk === 'INCOMPLETE' ? 'Risk incomplete' : 'Risk not calculated'}
+                </span>
               )}
             </div>
             <div className="space-y-2 text-sm mb-4">

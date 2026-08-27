@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import type { AppUser, Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
+import { useEvacuationPlan } from '../context/EvacuationContext'
+import { riskMeaning } from '../services/riskPresentation'
 import {
   IconAlertTriangle,
   IconChevronRight,
@@ -18,10 +20,7 @@ interface DashboardProps {
 export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
   const { community } = useCommunity()
   const risk = useRisk()
-  const vulnerable = community.children + community.elderly + community.disabled + community.otherVulnerable
-  const shelterPct = community.population > 0
-    ? Math.round((community.shelterCapacity / community.population) * 100)
-    : 0
+  const evacuation = useEvacuationPlan()
   const hazardLabel = risk.calculationStatus === 'COMPLETE'
     ? risk.hazardLevel
     : risk.calculationStatus
@@ -61,6 +60,23 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
                   ? 'Core rainfall and historical river evidence are required; missing evidence is never classified LOW.'
                   : `Deterministic prototype hazard score: ${risk.hazardScore.toFixed(1)} / 100.`}
               </p>
+              <p className="mt-3 text-sm leading-relaxed text-gray-700">{riskMeaning(risk)}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => onNavigate('risk')}
+                  className="rounded-lg bg-[#1e3a5f] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2d5282]"
+                >
+                  View Risk Assessment
+                </button>
+                {risk.calculationStatus === 'COMPLETE' && risk.hazardLevel !== 'LOW' && (
+                  <button
+                    onClick={() => onNavigate('evacuation')}
+                    className="rounded-lg border border-blue-300 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                  >
+                    Open Evacuation Planner
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -95,7 +111,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
           </button>
         </div>
         <ul className="mt-3 space-y-2 text-sm text-gray-600">
-          {risk.contributingFactors.map(factor => (
+          {risk.contributingFactors.slice(0, 3).map(factor => (
             <li key={factor} className="flex gap-2">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600" />
               <span>{factor}</span>
@@ -109,13 +125,15 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
           icon={<IconUsers size={18} />}
           label="Saved Population"
           value={community.population.toLocaleString()}
-          sub={`${vulnerable.toLocaleString()} saved as vulnerable residents`}
+          sub="Priority groups are shown separately in the planner"
         />
         <StatCard
           icon={<IconTruck size={18} />}
           label="Shelter Capacity"
-          value={community.shelterCapacity.toLocaleString()}
-          sub={`${shelterPct}% of saved population`}
+          value={evacuation.shelter.reportedCapacity?.toLocaleString() ?? 'Unknown'}
+          sub={evacuation.shelter.coveragePercent === null
+            ? 'Coverage cannot be calculated'
+            : `${evacuation.shelter.coveragePercent.toFixed(1)}% reported coverage`}
         />
         <StatCard
           icon={<IconUsers size={18} />}
@@ -132,22 +150,22 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-gray-900">Prototype tools</h2>
+        <h2 className="text-sm font-semibold text-gray-900">Evacuation planning</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Evacuation and support screens are interface prototypes and are not driven by a risk engine.
+          Planning status: <strong className="text-gray-800">{evacuation.planningStatus.replace(/_/g, ' ')}</strong>. This is decision support, not an official evacuation order.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             onClick={() => onNavigate('evacuation')}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
-            Open Evacuation Prototype
+            Open Evacuation Planner
           </button>
           <button
             onClick={() => onNavigate('support')}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
           >
-            Open Support Prototype
+            View Support Network
           </button>
         </div>
       </div>
