@@ -76,7 +76,7 @@ function environmentalFixture(): EnvironmentalData {
   return {
     location: { latitude: 16.5, longitude: 95 },
     fingerprint,
-    weatherModels: { aifs: weather(), ifs: weather() },
+    weatherModels: { aifs: weather(), ifs: weather(), gfs: weather(), ukmo: weather() },
     river: {
       unit: 'm³/s',
       days,
@@ -216,6 +216,8 @@ describe('RiskProvider freshness clock', () => {
     const expired = latestRisk as RiskResult | null
     expect(expired?.freshness.sources.aifs.usable).toBe(false)
     expect(expired?.freshness.sources.ifs.usable).toBe(false)
+    expect(expired?.freshness.sources.gfs.usable).toBe(false)
+    expect(expired?.freshness.sources.ukmo.usable).toBe(false)
     expect(expired?.calculationStatus).toBe('INCOMPLETE')
     expect(expired?.hazardScore).toBeNull()
     expect(environmentalServiceMocks.fetchEnvironmentalData).toHaveBeenCalledTimes(1)

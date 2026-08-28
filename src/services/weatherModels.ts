@@ -1,21 +1,76 @@
-import type { WeatherModelData, PrecipitationHorizon, SourceMetadata } from './types'
+import type {
+  PrecipitationHorizon,
+  SourceMetadata,
+  WeatherModelData,
+  WeatherModelKey,
+} from './types'
 import {
-  ECMWF_BASE,
   AIFS_MODEL,
-  IFS_MODEL,
+  ECMWF_BASE,
   FORECAST_HOURS,
+  GFS_BASE,
+  GFS_MODEL,
+  IFS_MODEL,
   MIN_COVERAGE_PCT,
   REQUIRED_WEATHER_HORIZONS,
+  UKMO_BASE,
+  UKMO_MODEL,
 } from './config'
 import { coordFingerprint } from './cache'
 
-interface EcmwfResponse {
+interface WeatherApiResponse {
   hourly?: {
     time?: string[]
     precipitation?: (number | null)[]
   }
   error?: boolean
   reason?: string
+}
+
+export interface WeatherModelDefinition {
+  key: WeatherModelKey
+  endpoint: string
+  model: string
+  label: string
+  timeoutLabel: string
+}
+
+export const WEATHER_MODEL_KEYS: readonly WeatherModelKey[] = [
+  'aifs',
+  'ifs',
+  'gfs',
+  'ukmo',
+]
+
+export const WEATHER_MODEL_DEFINITIONS: Readonly<Record<WeatherModelKey, WeatherModelDefinition>> = {
+  aifs: {
+    key: 'aifs',
+    endpoint: ECMWF_BASE,
+    model: AIFS_MODEL,
+    label: 'ECMWF AIFS Single — AI Forecast',
+    timeoutLabel: 'AIFS',
+  },
+  ifs: {
+    key: 'ifs',
+    endpoint: ECMWF_BASE,
+    model: IFS_MODEL,
+    label: 'ECMWF IFS HRES — Physics-Based Forecast',
+    timeoutLabel: 'IFS HRES',
+  },
+  gfs: {
+    key: 'gfs',
+    endpoint: GFS_BASE,
+    model: GFS_MODEL,
+    label: 'NOAA GFS Global — Physics-Based Forecast',
+    timeoutLabel: 'GFS',
+  },
+  ukmo: {
+    key: 'ukmo',
+    endpoint: UKMO_BASE,
+    model: UKMO_MODEL,
+    label: 'UKMO Global 10 km — Physics-Based Forecast',
+    timeoutLabel: 'UKMO',
+  },
 }
 
 export interface ForecastPoint {
@@ -27,15 +82,14 @@ function buildMetadata(
   status: SourceMetadata['status'],
   coordinateFingerprint: string,
   error: string | null,
-  successful: boolean,
 ): SourceMetadata {
   const now = new Date().toISOString()
   return {
     status,
     retrievedAt: now,
-    lastSuccessfulAt: successful ? now : null,
+    lastSuccessfulAt: null,
     cachedAt: null,
-    ageMs: successful ? 0 : null,
+    ageMs: null,
     cached: false,
     coordinateFingerprint,
     error,
@@ -104,40 +158,46 @@ export function normalizePrecipitationSeries(
   })
 }
 
-export function isWeatherModelUsable(data: WeatherModelData | undefined): boolean {
-  if (!data) return false
-  return REQUIRED_WEATHER_HORIZONS.every(hours => {
-    const horizon = data.horizons.find(candidate => candidate.hours === hours)
-    return Boolean(
-      horizon
-      && horizon.complete
-      && horizon.total !== null
-      && horizon.expectedHours === hours
-      && horizon.coverage >= MIN_COVERAGE_PCT,
-    )
-  })
+export function isWeatherHorizonUsable(
+  data: WeatherModelData | undefined,
+  hours: number,
+): boolean {
+  const horizon = data?.horizons.find(candidate => candidate.hours === hours)
+  return Boolean(
+    horizon
+    && horizon.complete
+    && horizon.total !== null
+    && Number.isFinite(horizon.total)
+    && horizon.expectedHours === hours
+    && horizon.coverage >= MIN_COVERAGE_PCT,
+  )
 }
 
-async function fetchModel(
+export function isWeatherModelUsable(data: WeatherModelData | undefined): boolean {
+  return Boolean(data && REQUIRED_WEATHER_HORIZONS.every(hours =>
+    isWeatherHorizonUsable(data, hours)))
+}
+
+export async function fetchWeatherModel(
+  key: WeatherModelKey,
   latitude: number,
   longitude: number,
-  model: string,
-  label: string,
   signal?: AbortSignal,
 ): Promise<WeatherModelData> {
+  const definition = WEATHER_MODEL_DEFINITIONS[key]
   const coordinateFingerprint = coordFingerprint(latitude, longitude)
   const params = new URLSearchParams({
     latitude: String(latitude),
     longitude: String(longitude),
     hourly: 'precipitation',
-    models: model,
+    models: definition.model,
     forecast_hours: String(FORECAST_HOURS),
     timezone: 'auto',
   })
-  const response = await fetch(`${ECMWF_BASE}?${params}`, { signal })
-  if (!response.ok) throw new Error(`ECMWF ${model} returned ${response.status}`)
-  const data: EcmwfResponse = await response.json()
-  if (data.error) throw new Error(data.reason ?? `ECMWF ${model} API error`)
+  const response = await fetch(`${definition.endpoint}?${params}`, { signal })
+  if (!response.ok) throw new Error(`${definition.model} returned ${response.status}`)
+  const data: WeatherApiResponse = await response.json()
+  if (data.error) throw new Error(data.reason ?? `${definition.model} API error`)
 
   const times = data.hourly?.time ?? []
   const values = data.hourly?.precipitation ?? []
@@ -161,12 +221,12 @@ async function fetchModel(
       : `Forecast coverage below ${MIN_COVERAGE_PCT}% for ${incompleteHorizons}`
 
   const result: WeatherModelData = {
-    label,
-    model,
+    label: definition.label,
+    model: definition.model,
     unit: 'mm',
     horizons,
     series,
-    metadata: buildMetadata(status, coordinateFingerprint, error, false),
+    metadata: buildMetadata(status, coordinateFingerprint, error),
   }
   const usable = isWeatherModelUsable(result)
   result.metadata.lastSuccessfulAt = usable ? result.metadata.retrievedAt : null
@@ -174,18 +234,18 @@ async function fetchModel(
   return result
 }
 
-export async function fetchAifs(
-  latitude: number,
-  longitude: number,
-  signal?: AbortSignal,
-): Promise<WeatherModelData> {
-  return fetchModel(latitude, longitude, AIFS_MODEL, 'ECMWF AIFS — AI Forecast', signal)
+export function fetchAifs(latitude: number, longitude: number, signal?: AbortSignal) {
+  return fetchWeatherModel('aifs', latitude, longitude, signal)
 }
 
-export async function fetchIfs(
-  latitude: number,
-  longitude: number,
-  signal?: AbortSignal,
-): Promise<WeatherModelData> {
-  return fetchModel(latitude, longitude, IFS_MODEL, 'ECMWF IFS — Physics-Based Forecast', signal)
+export function fetchIfs(latitude: number, longitude: number, signal?: AbortSignal) {
+  return fetchWeatherModel('ifs', latitude, longitude, signal)
+}
+
+export function fetchGfs(latitude: number, longitude: number, signal?: AbortSignal) {
+  return fetchWeatherModel('gfs', latitude, longitude, signal)
+}
+
+export function fetchUkmo(latitude: number, longitude: number, signal?: AbortSignal) {
+  return fetchWeatherModel('ukmo', latitude, longitude, signal)
 }

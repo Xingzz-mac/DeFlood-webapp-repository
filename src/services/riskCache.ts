@@ -9,10 +9,11 @@ import {
   RIVER_MAX_STALE_MS,
   WEATHER_MAX_STALE_MS,
 } from './config'
-import { isWeatherModelUsable } from './ecmwf'
+import { isWeatherModelUsable } from './weatherModels'
 import { isPrimaryRiverUsable } from './glofas'
 import { calculateRisk } from './riskEngine'
 import { calculateRiverTrend } from './riskScoring'
+import { WEATHER_MODEL_KEYS } from './weatherModels'
 import type { HistoricalBaseline, RiskEngineInput, RiskResult } from './riskTypes'
 import type { EnvironmentalData, SourceMetadata, WeatherModelData } from './types'
 
@@ -23,6 +24,8 @@ export interface RiskEvidenceIdentity {
   evidencePayload: string
   aifsLastSuccessfulAt: string | null
   ifsLastSuccessfulAt: string | null
+  gfsLastSuccessfulAt: string | null
+  ukmoLastSuccessfulAt: string | null
   riverLastSuccessfulAt: string | null
   elevationLastSuccessfulAt: string | null
   historicalLastSuccessfulAt: string | null
@@ -99,10 +102,10 @@ export function buildRiskEvidence(
   const evidencePayload = JSON.stringify({
     coordinateFingerprint: environmental.fingerprint,
     engineVersion,
-    weather: {
-      aifs: weatherEvidence(environmental.weatherModels.aifs),
-      ifs: weatherEvidence(environmental.weatherModels.ifs),
-    },
+    weather: Object.fromEntries(WEATHER_MODEL_KEYS.map(key => [
+      key,
+      weatherEvidence(environmental.weatherModels[key]),
+    ])),
     river: {
       primaryUsable: isPrimaryRiverUsable(environmental.river.days),
       primary: nearTermDays.map(day => ({
@@ -154,6 +157,8 @@ export function buildRiskEvidence(
     evidencePayload,
     aifsLastSuccessfulAt: environmental.weatherModels.aifs.metadata.lastSuccessfulAt,
     ifsLastSuccessfulAt: environmental.weatherModels.ifs.metadata.lastSuccessfulAt,
+    gfsLastSuccessfulAt: environmental.weatherModels.gfs.metadata.lastSuccessfulAt,
+    ukmoLastSuccessfulAt: environmental.weatherModels.ukmo.metadata.lastSuccessfulAt,
     riverLastSuccessfulAt: environmental.river.metadata.lastSuccessfulAt,
     elevationLastSuccessfulAt: environmental.terrain.metadata.lastSuccessfulAt,
     historicalLastSuccessfulAt: historical?.lastSuccessfulAt ?? null,
@@ -164,6 +169,8 @@ function evidenceExpiryMs(evidence: RiskEvidenceIdentity, nowMs: number): number
   const expiries = [
     [evidence.aifsLastSuccessfulAt, WEATHER_MAX_STALE_MS],
     [evidence.ifsLastSuccessfulAt, WEATHER_MAX_STALE_MS],
+    [evidence.gfsLastSuccessfulAt, WEATHER_MAX_STALE_MS],
+    [evidence.ukmoLastSuccessfulAt, WEATHER_MAX_STALE_MS],
     [evidence.riverLastSuccessfulAt, RIVER_MAX_STALE_MS],
     [evidence.elevationLastSuccessfulAt, ELEVATION_MAX_STALE_MS],
     [evidence.historicalLastSuccessfulAt, HISTORICAL_CACHE_MAX_AGE_MS],

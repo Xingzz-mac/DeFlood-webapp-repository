@@ -11,11 +11,13 @@ import type { RiverDay } from './types'
 describe('risk scoring boundaries', () => {
   it('allows extreme rainfall to reach the configured maximum score', () => {
     const score = calculateRainfallSeverity({
-      source: 'aifs+ifs',
+      source: 'multi-model',
+      usableModelCount: 4,
+      totalConfiguredModelCount: 4,
       horizons: [
-        { hours: 24, value: 150 },
-        { hours: 48, value: 220 },
-        { hours: 72, value: 300 },
+        { hours: 24, value: 150, modelCount: 4, modelKeys: ['aifs', 'ifs', 'gfs', 'ukmo'] },
+        { hours: 48, value: 220, modelCount: 4, modelKeys: ['aifs', 'ifs', 'gfs', 'ukmo'] },
+        { hours: 72, value: 300, modelCount: 4, modelKeys: ['aifs', 'ifs', 'gfs', 'ukmo'] },
       ],
     })
     expect(score).toBe(100)
@@ -23,11 +25,13 @@ describe('risk scoring boundaries', () => {
 
   it('uses separate accumulation bands for 24-hour and 72-hour rainfall', () => {
     const score = calculateRainfallSeverity({
-      source: 'aifs+ifs',
+      source: 'multi-model',
+      usableModelCount: 4,
+      totalConfiguredModelCount: 4,
       horizons: [
-        { hours: 24, value: 25 },
-        { hours: 48, value: 25 },
-        { hours: 72, value: 25 },
+        { hours: 24, value: 25, modelCount: 4, modelKeys: ['aifs', 'ifs', 'gfs', 'ukmo'] },
+        { hours: 48, value: 25, modelCount: 4, modelKeys: ['aifs', 'ifs', 'gfs', 'ukmo'] },
+        { hours: 72, value: 25, modelCount: 4, modelKeys: ['aifs', 'ifs', 'gfs', 'ukmo'] },
       ],
     })
     expect(score).toBe(23)

@@ -77,14 +77,20 @@ function riverDays(
 function environmental(options: {
   aifs?: [number, number, number] | null
   ifs?: [number, number, number] | null
+  gfs?: [number, number, number] | null
+  ukmo?: [number, number, number] | null
   discharge?: (number | null)[]
   ensemble?: boolean
   elevation?: number | null
   aifsIncomplete48?: boolean
   ifsIncomplete48?: boolean
+  gfsIncomplete48?: boolean
+  ukmoIncomplete48?: boolean
 } = {}): EnvironmentalData {
   const aifs = options.aifs === undefined ? [10, 20, 30] as [number, number, number] : options.aifs
   const ifs = options.ifs === undefined ? aifs : options.ifs
+  const gfs = options.gfs === undefined ? aifs : options.gfs
+  const ukmo = options.ukmo === undefined ? aifs : options.ukmo
   const discharge = options.discharge ?? [10, 11, 12]
   const days = riverDays(discharge, options.ensemble ?? true)
   const valid = discharge.filter((value): value is number => value !== null)
@@ -95,6 +101,8 @@ function environmental(options: {
     weatherModels: {
       aifs: weather(aifs, options.aifsIncomplete48),
       ifs: weather(ifs, options.ifsIncomplete48),
+      gfs: weather(gfs, options.gfsIncomplete48),
+      ukmo: weather(ukmo, options.ukmoIncomplete48),
     },
     river: {
       unit: 'm³/s',
@@ -206,7 +214,7 @@ describe('deterministic Flood Hazard', () => {
     expect(result.hazardScore).toBeNull()
     expect(result.modelAgreement.label).toBe('Unavailable — no usable weather models')
     expect(result.contributingFactors).toContain(
-      'Neither AIFS nor IFS is usable, so rainfall hazard and weather-model agreement are unavailable.',
+      'No configured weather model is usable, so rainfall hazard and multi-model agreement are unavailable.',
     )
   })
 
@@ -224,7 +232,7 @@ describe('deterministic Flood Hazard', () => {
     })
     expect(single.calculationStatus).toBe('COMPLETE')
     expect(single.modelAgreement.score).toBeNull()
-    expect(single.modelAgreement.label).toBe('Unavailable — single weather model')
+    expect(single.modelAgreement.label).toBe('Unavailable — single usable weather model')
     expect(single.confidenceScore).toBeLessThan(both.confidenceScore)
   })
 
@@ -236,7 +244,12 @@ describe('deterministic Flood Hazard', () => {
       nowMs: Date.parse(now),
     })
     const disagreeing = calculateRisk({
-      environmental: environmental({ aifs: [0, 0, 0], ifs: [100, 200, 300] }),
+      environmental: environmental({
+        aifs: [0, 0, 0],
+        ifs: [100, 200, 300],
+        gfs: [0, 0, 0],
+        ukmo: [100, 200, 300],
+      }),
       historicalBaseline: sharedHistory,
       nowMs: Date.parse(now),
     })
@@ -248,7 +261,7 @@ describe('deterministic Flood Hazard', () => {
   it.each([
     ['AIFS', { aifsIncomplete48: true }],
     ['IFS', { ifsIncomplete48: true }],
-  ] as const)('keeps both models in hazard consensus when %s 48h comparison is incomplete', (_, incompleteOption) => {
+  ] as const)('keeps required-horizon evidence when %s lacks only 48h coverage', (_, incompleteOption) => {
     const sharedHistory = history(Array.from({ length: 100 }, (_, index) => index + 1))
     const complete = calculateRisk({
       environmental: environmental({ aifs: [40, 70, 100], ifs: [40, 70, 100] }),
@@ -265,18 +278,14 @@ describe('deterministic Flood Hazard', () => {
       nowMs: Date.parse(now),
     })
 
-    expect(incomplete.modelAgreement.status).toBe('INCOMPLETE_COMPARISON_HORIZONS')
-    expect(incomplete.modelAgreement.score).toBeNull()
-    expect(incomplete.weatherConsensus.source).toBe('aifs+ifs')
+    expect(incomplete.modelAgreement.status).toBe('FOUR_USABLE_MODELS')
+    expect(incomplete.modelAgreement.horizons.find(horizon => horizon.hours === 48)?.modelCount).toBe(3)
+    expect(incomplete.weatherConsensus.source).toBe('multi-model')
     expect(incomplete.rainfallSeverity).toBe(complete.rainfallSeverity)
     expect(incomplete.hazardScore).toBe(complete.hazardScore)
     expect(incomplete.hazardLevel).toBe(complete.hazardLevel)
-    expect(incomplete.confidenceComponents.modelAgreement).toBeNull()
-    expect(incomplete.confidenceScore).toBeLessThan(complete.confidenceScore)
-    expect(incomplete.contributingFactors).toContain(
-      'Both weather models are usable for rainfall hazard, but model-agreement confidence is unavailable because one or more comparison horizons are incomplete.',
-    )
-    expect(incomplete.contributingFactors.join(' ')).not.toContain('Neither AIFS nor IFS')
+    expect(incomplete.confidenceComponents.modelAgreement).toBe(100)
+    expect(incomplete.contributingFactors.join(' ')).not.toContain('No configured weather model')
     expect(incomplete.contributingFactors.join(' ')).not.toContain('only usable rainfall model')
   })
 
@@ -309,6 +318,8 @@ describe('deterministic Flood Hazard', () => {
     const expiredAt = new Date(Date.parse(now) - WEATHER_MAX_STALE_MS - 1).toISOString()
     current.weatherModels.aifs.metadata.lastSuccessfulAt = expiredAt
     current.weatherModels.ifs.metadata.lastSuccessfulAt = expiredAt
+    current.weatherModels.gfs.metadata.lastSuccessfulAt = expiredAt
+    current.weatherModels.ukmo.metadata.lastSuccessfulAt = expiredAt
 
     const result = calculateRisk({
       environmental: current,
@@ -318,9 +329,75 @@ describe('deterministic Flood Hazard', () => {
 
     expect(result.freshness.sources.aifs.usable).toBe(false)
     expect(result.freshness.sources.ifs.usable).toBe(false)
+    expect(result.freshness.sources.gfs.usable).toBe(false)
+    expect(result.freshness.sources.ukmo.usable).toBe(false)
     expect(result.calculationStatus).toBe('INCOMPLETE')
     expect(result.hazardScore).toBeNull()
     expect(result.hazardLevel).toBeNull()
+  })
+
+  it('keeps rainfall eligible when one expired model leaves three current usable models', () => {
+    const current = environmental({ aifs: [30, 60, 90] })
+    current.weatherModels.aifs.metadata.lastSuccessfulAt = new Date(
+      Date.parse(now) - WEATHER_MAX_STALE_MS - 1,
+    ).toISOString()
+
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.freshness.sources.aifs.usable).toBe(false)
+    expect(result.sourceInformation.aifs).toBe('expired')
+    expect(result.modelAgreement.status).toBe('THREE_USABLE_MODELS')
+    expect(result.calculationStatus).toBe('COMPLETE')
+  })
+
+  it('keeps the required 24h and 72h rainfall-horizon rule', () => {
+    const current = environmental({
+      aifs: null,
+      ifs: null,
+      gfs: [30, 60, 90],
+      ukmo: null,
+    })
+    const horizon72 = current.weatherModels.gfs.horizons.find(horizon => horizon.hours === 72)
+    if (horizon72) {
+      horizon72.total = null
+      horizon72.complete = false
+      horizon72.validHours = 0
+      horizon72.coverage = 0
+    }
+
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.weatherConsensus.horizons.find(horizon => horizon.hours === 24)?.value).toBeNull()
+    expect(result.weatherConsensus.horizons.find(horizon => horizon.hours === 72)?.value).toBeNull()
+    expect(result.calculationStatus).toBe('INCOMPLETE')
+  })
+
+  it.each([
+    ['4/4', {}, 100],
+    ['3/4', { ukmo: null }, 97],
+    ['2/4', { gfs: null, ukmo: null }, 89.5],
+    ['1/4', { ifs: null, gfs: null, ukmo: null }, 79],
+    ['0/4', { aifs: null, ifs: null, gfs: null, ukmo: null }, 70],
+  ] as const)('applies the deterministic %s forecast-model availability component', (
+    _label,
+    weatherOptions,
+    expectedCompleteness,
+  ) => {
+    const result = calculateRisk({
+      environmental: environmental(weatherOptions),
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.confidenceComponents.completeness).toBe(expectedCompleteness)
   })
 
   it('does not allow current river evidence older than its maximum age to support COMPLETE', () => {

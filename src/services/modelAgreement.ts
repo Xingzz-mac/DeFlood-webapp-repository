@@ -1,129 +1,163 @@
-import { isWeatherModelUsable } from './ecmwf'
 import {
   AGREEMENT_HORIZON_WEIGHTS,
   AGREEMENT_RAIN_FLOOR_MM,
   AGREEMENT_SCORE_ANCHORS,
 } from './riskConfig'
-import { MIN_COVERAGE_PCT } from './config'
-import type { ModelAgreement, WeatherConsensus } from './riskTypes'
-import type { WeatherModelData } from './types'
+import type {
+  AgreementLabel,
+  ModelAgreement,
+  ModelAgreementStatus,
+  WeatherConsensus,
+} from './riskTypes'
+import type { WeatherModelKey, WeatherModels } from './types'
+import {
+  isWeatherHorizonUsable,
+  isWeatherModelUsable,
+  WEATHER_MODEL_KEYS,
+} from './weatherModels'
 import { interpolateAnchors, roundScore } from './riskScoring'
 
 const HORIZONS = [24, 48, 72] as const
 
-function totalFor(model: WeatherModelData, hours: number): number | null {
-  const total = model.horizons.find(horizon => horizon.hours === hours)?.total
-  return typeof total === 'number' && Number.isFinite(total) ? total : null
+function totalFor(models: WeatherModels, key: WeatherModelKey, hours: number): number | null {
+  if (!isWeatherModelUsable(models[key]) || !isWeatherHorizonUsable(models[key], hours)) {
+    return null
+  }
+  return models[key].horizons.find(horizon => horizon.hours === hours)?.total ?? null
 }
 
-function comparisonTotalFor(model: WeatherModelData, hours: number): number | null {
-  const horizon = model.horizons.find(candidate => candidate.hours === hours)
-  return horizon
-    && horizon.complete
-    && horizon.expectedHours === hours
-    && horizon.coverage >= MIN_COVERAGE_PCT
-    ? totalFor(model, hours)
-    : null
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
 }
 
-export function calculateModelAgreement(
-  aifs: WeatherModelData,
-  ifs: WeatherModelData,
-): ModelAgreement {
-  const aifsUsable = isWeatherModelUsable(aifs)
-  const ifsUsable = isWeatherModelUsable(ifs)
-  if (!aifsUsable && !ifsUsable) {
+function consensusValue(values: number[]): number | null {
+  if (values.length === 0) return null
+  if (values.length === 1) return values[0]
+  if (values.length === 2) return (values[0] + values[1]) / 2
+  return median(values)
+}
+
+function agreementStatus(usableModelCount: number): ModelAgreementStatus {
+  if (usableModelCount === 4) return 'FOUR_USABLE_MODELS'
+  if (usableModelCount === 3) return 'THREE_USABLE_MODELS'
+  if (usableModelCount === 2) return 'TWO_USABLE_MODELS'
+  if (usableModelCount === 1) return 'SINGLE_USABLE_MODEL'
+  return 'NO_USABLE_MODELS'
+}
+
+function agreementLabel(score: number): AgreementLabel {
+  if (score >= 85) return 'Strong'
+  if (score >= 65) return 'Moderate'
+  if (score >= 40) return 'Weak'
+  return 'Poor'
+}
+
+function usableKeys(models: WeatherModels): WeatherModelKey[] {
+  return WEATHER_MODEL_KEYS.filter(key => isWeatherModelUsable(models[key]))
+}
+
+export function calculateModelAgreement(models: WeatherModels): ModelAgreement {
+  const globallyUsable = usableKeys(models)
+  const usableModelCount = globallyUsable.length
+  const totalConfiguredModelCount = WEATHER_MODEL_KEYS.length
+  const status = agreementStatus(usableModelCount)
+
+  if (usableModelCount === 0) {
     return {
-      status: 'NO_USABLE_MODELS',
+      status,
       score: null,
       label: 'Unavailable — no usable weather models',
       weightedDifference: null,
+      usableModelCount,
+      totalConfiguredModelCount,
+      coveredHorizonWeight: 0,
       horizons: [],
     }
   }
-  if (!aifsUsable || !ifsUsable) {
+  if (usableModelCount === 1) {
     return {
-      status: 'SINGLE_USABLE_MODEL',
+      status,
       score: null,
-      label: 'Unavailable — single weather model',
+      label: 'Unavailable — single usable weather model',
       weightedDifference: null,
+      usableModelCount,
+      totalConfiguredModelCount,
+      coveredHorizonWeight: 0,
       horizons: [],
     }
   }
 
-  const values = HORIZONS.map(hours => ({
-    hours,
-    aifs: comparisonTotalFor(aifs, hours),
-    ifs: comparisonTotalFor(ifs, hours),
-  }))
-  if (values.some(value => value.aifs === null || value.ifs === null)) {
-    return {
-      status: 'INCOMPLETE_COMPARISON_HORIZONS',
-      score: null,
-      label: 'Unavailable — incomplete comparison horizons',
-      weightedDifference: null,
-      horizons: [],
-    }
-  }
-
-  const horizons = values.map(value => {
-    const aifsValue = value.aifs as number
-    const ifsValue = value.ifs as number
-    const mean = (aifsValue + ifsValue) / 2
-    const differenceRatio = Math.abs(aifsValue - ifsValue)
-      / Math.max(mean, AGREEMENT_RAIN_FLOOR_MM)
-    return {
-      hours: value.hours,
-      aifs: aifsValue,
-      ifs: ifsValue,
+  const horizons = HORIZONS.flatMap(hours => {
+    const modelTotals = globallyUsable.flatMap(key => {
+      const total = totalFor(models, key, hours)
+      return total === null ? [] : [{ key, total }]
+    })
+    if (modelTotals.length < 2) return []
+    const consensus = consensusValue(modelTotals.map(model => model.total)) as number
+    const meanAbsoluteDeviation = modelTotals.reduce(
+      (sum, model) => sum + Math.abs(model.total - consensus),
+      0,
+    ) / modelTotals.length
+    const differenceRatio = meanAbsoluteDeviation
+      / Math.max(consensus, AGREEMENT_RAIN_FLOOR_MM)
+    return [{
+      hours,
+      modelTotals,
+      modelCount: modelTotals.length,
+      consensus,
+      meanAbsoluteDeviation,
       differenceRatio,
-      weight: AGREEMENT_HORIZON_WEIGHTS[value.hours],
-    }
+      score: roundScore(interpolateAnchors(differenceRatio, AGREEMENT_SCORE_ANCHORS)),
+      weight: AGREEMENT_HORIZON_WEIGHTS[hours],
+    }]
   })
+  const coveredHorizonWeight = horizons.reduce((sum, horizon) => sum + horizon.weight, 0)
+  const score = roundScore(horizons.reduce(
+    (sum, horizon) => sum + horizon.score * horizon.weight,
+    0,
+  ))
   const weightedDifference = horizons.reduce(
     (sum, horizon) => sum + horizon.differenceRatio * horizon.weight,
     0,
   )
-  const label = weightedDifference <= 0.15
-    ? 'Strong'
-    : weightedDifference <= 0.3
-      ? 'Moderate'
-      : weightedDifference <= 0.5
-        ? 'Weak'
-        : 'Poor'
 
   return {
-    status: 'BOTH_MODELS_COMPLETE_FOR_AGREEMENT',
-    score: roundScore(interpolateAnchors(weightedDifference, AGREEMENT_SCORE_ANCHORS)),
-    label,
+    status,
+    score,
+    label: agreementLabel(score),
     weightedDifference,
+    usableModelCount,
+    totalConfiguredModelCount,
+    coveredHorizonWeight,
     horizons,
   }
 }
 
-export function buildWeatherConsensus(
-  aifs: WeatherModelData,
-  ifs: WeatherModelData,
-): WeatherConsensus {
-  const aifsUsable = isWeatherModelUsable(aifs)
-  const ifsUsable = isWeatherModelUsable(ifs)
-  const source = aifsUsable && ifsUsable
-    ? 'aifs+ifs'
-    : aifsUsable
-      ? 'aifs'
-      : ifsUsable
-        ? 'ifs'
-        : 'unavailable'
+export function buildWeatherConsensus(models: WeatherModels): WeatherConsensus {
+  const globallyUsable = usableKeys(models)
+  const source = globallyUsable.length >= 2
+    ? 'multi-model'
+    : globallyUsable[0] ?? 'unavailable'
 
   return {
     source,
+    usableModelCount: globallyUsable.length,
+    totalConfiguredModelCount: WEATHER_MODEL_KEYS.length,
     horizons: HORIZONS.map(hours => {
-      const aifsTotal = aifsUsable ? totalFor(aifs, hours) : null
-      const ifsTotal = ifsUsable ? totalFor(ifs, hours) : null
-      const value = aifsTotal !== null && ifsTotal !== null
-        ? (aifsTotal + ifsTotal) / 2
-        : aifsTotal ?? ifsTotal
-      return { hours, value }
+      const modelTotals = globallyUsable.flatMap(key => {
+        const total = totalFor(models, key, hours)
+        return total === null ? [] : [{ key, total }]
+      })
+      return {
+        hours,
+        value: consensusValue(modelTotals.map(model => model.total)),
+        modelCount: modelTotals.length,
+        modelKeys: modelTotals.map(model => model.key),
+      }
     }),
   }
 }

@@ -1,4 +1,4 @@
-import { isWeatherModelUsable } from './ecmwf'
+import { isWeatherModelUsable } from './weatherModels'
 import { isPrimaryRiverUsable, usablePrimaryRiverDays } from './glofas'
 import {
   ELEVATION_MAX_STALE_MS,
@@ -15,6 +15,7 @@ import {
   ENSEMBLE_MIN_ALIGNED_DAYS,
   ENSEMBLE_SCORE_ANCHORS,
   FRESHNESS_WEIGHTS,
+  FORECAST_MODEL_AVAILABILITY_FACTORS,
   RAINFALL_24H_ANCHORS,
   RAINFALL_72H_ANCHORS,
   RAINFALL_SEVERITY_WEIGHTS,
@@ -32,6 +33,7 @@ import type {
   WeatherConsensus,
 } from './riskTypes'
 import type { EnvironmentalData, RiverDay, SourceMetadata } from './types'
+import { WEATHER_MODEL_KEYS } from './weatherModels'
 
 export function clamp(value: number, min = 0, max = 100): number {
   return Math.min(max, Math.max(min, value))
@@ -160,16 +162,19 @@ export function calculateCompleteness(
   environmental: EnvironmentalData,
   historical: HistoricalBaseline | null,
 ): number {
-  const aifs = completenessCredit(
-    isWeatherModelUsable(environmental.weatherModels.aifs),
-    environmental.weatherModels.aifs.metadata.cached,
-    CACHED_SOURCE_COMPLETENESS_FACTOR,
-  )
-  const ifs = completenessCredit(
-    isWeatherModelUsable(environmental.weatherModels.ifs),
-    environmental.weatherModels.ifs.metadata.cached,
-    CACHED_SOURCE_COMPLETENESS_FACTOR,
-  )
+  const usableWeatherKeys = WEATHER_MODEL_KEYS.filter(key =>
+    isWeatherModelUsable(environmental.weatherModels[key]))
+  const modelAvailability = FORECAST_MODEL_AVAILABILITY_FACTORS[
+    usableWeatherKeys.length as keyof typeof FORECAST_MODEL_AVAILABILITY_FACTORS
+  ]
+  const modelQuality = usableWeatherKeys.length === 0
+    ? 0
+    : usableWeatherKeys.reduce((sum, key) => sum + completenessCredit(
+        true,
+        environmental.weatherModels[key].metadata.cached,
+        CACHED_SOURCE_COMPLETENESS_FACTOR,
+      ), 0) / usableWeatherKeys.length
+  const weatherModels = modelAvailability * modelQuality
   const river = completenessCredit(
     isPrimaryRiverUsable(environmental.river.days),
     environmental.river.metadata.cached,
@@ -187,8 +192,7 @@ export function calculateCompleteness(
     CACHED_SOURCE_COMPLETENESS_FACTOR,
   )
   return roundScore(100 * (
-    aifs * COMPLETENESS_WEIGHTS.aifs
-    + ifs * COMPLETENESS_WEIGHTS.ifs
+    weatherModels * COMPLETENESS_WEIGHTS.weatherModels
     + river * COMPLETENESS_WEIGHTS.river
     + history * COMPLETENESS_WEIGHTS.historical
     + elevation * COMPLETENESS_WEIGHTS.elevation
@@ -234,6 +238,18 @@ export function calculateFreshness(
       WEATHER_MAX_STALE_MS,
       nowMs,
     ),
+    gfs: sourceFreshness(
+      environmental.weatherModels.gfs.metadata,
+      isWeatherModelUsable(environmental.weatherModels.gfs),
+      WEATHER_MAX_STALE_MS,
+      nowMs,
+    ),
+    ukmo: sourceFreshness(
+      environmental.weatherModels.ukmo.metadata,
+      isWeatherModelUsable(environmental.weatherModels.ukmo),
+      WEATHER_MAX_STALE_MS,
+      nowMs,
+    ),
     river: sourceFreshness(
       environmental.river.metadata,
       isPrimaryRiverUsable(environmental.river.days),
@@ -248,10 +264,16 @@ export function calculateFreshness(
       nowMs,
     ),
   }
+  const usableWeatherFreshness = WEATHER_MODEL_KEYS
+    .map(key => sources[key])
+    .filter(source => source.usable)
+  const weatherFreshness = usableWeatherFreshness.length === 0
+    ? 0
+    : usableWeatherFreshness.reduce((sum, source) => sum + source.score, 0)
+      / usableWeatherFreshness.length
   return {
     score: roundScore(
-      sources.aifs.score * FRESHNESS_WEIGHTS.aifs
-      + sources.ifs.score * FRESHNESS_WEIGHTS.ifs
+      weatherFreshness * FRESHNESS_WEIGHTS.weatherModels
       + sources.river.score * FRESHNESS_WEIGHTS.river
       + sources.elevation.score * FRESHNESS_WEIGHTS.elevation,
     ),

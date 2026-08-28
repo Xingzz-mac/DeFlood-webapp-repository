@@ -252,4 +252,24 @@ describe('deterministic evacuation planning', () => {
     expect(second.allowedActions).toEqual(first.allowedActions)
     expect(second.immediatePriorities).toEqual(first.immediatePriorities)
   })
+
+  it('keeps Stage 3 output identical when four-model metadata is present outside its deterministic inputs', () => {
+    const suppliedCommunity = community()
+    const stage2Result = risk({ hazardLevel: 'HIGH', hazardScore: 82, confidenceScore: 76 })
+    const fourModelStage2Result = {
+      ...stage2Result,
+      weatherConsensus: {
+        usableModelCount: 4,
+        horizons: [
+          { hours: 24, value: 30 },
+          { hours: 48, value: 50 },
+          { hours: 72, value: 80 },
+        ],
+      },
+      modelAgreement: { status: 'FOUR_USABLE_MODELS', score: 76 },
+    }
+
+    expect(calculateEvacuationPlan(suppliedCommunity, fourModelStage2Result))
+      .toEqual(calculateEvacuationPlan(suppliedCommunity, stage2Result))
+  })
 })

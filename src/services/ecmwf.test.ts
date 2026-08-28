@@ -1,12 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AIFS_MODEL, ECMWF_BASE, IFS_MODEL } from './config'
+import {
+  AIFS_MODEL,
+  ECMWF_BASE,
+  GFS_BASE,
+  GFS_MODEL,
+  IFS_MODEL,
+  UKMO_BASE,
+  UKMO_MODEL,
+} from './config'
 import {
   buildPrecipitationHorizons,
   fetchAifs,
+  fetchGfs,
   fetchIfs,
+  fetchUkmo,
   isWeatherModelUsable,
   normalizePrecipitationSeries,
-} from './ecmwf'
+} from './weatherModels'
 
 function hourlyTimes(count: number): string[] {
   const start = Date.UTC(2026, 0, 1)
@@ -33,7 +43,7 @@ function nullForecastResponse(): Response {
   }), { status: 200 })
 }
 
-describe('ECMWF precipitation processing', () => {
+describe('weather-model precipitation processing', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -98,8 +108,8 @@ describe('ECMWF precipitation processing', () => {
     })
   })
 
-  it('keeps the existing IFS 0.25 identifier and parses its response through the same contract', async () => {
-    expect(IFS_MODEL).toBe('ecmwf_ifs025')
+  it('requests and parses IFS HRES through the common weather-model contract', async () => {
+    expect(IFS_MODEL).toBe('ecmwf_ifs')
     const fetchMock = vi.fn((_input: string | URL | Request) =>
       Promise.resolve(forecastResponse(2)))
     vi.stubGlobal('fetch', fetchMock)
@@ -108,12 +118,37 @@ describe('ECMWF precipitation processing', () => {
     const url = new URL(String(fetchMock.mock.calls[0]?.[0]))
 
     expect(`${url.origin}${url.pathname}`).toBe(ECMWF_BASE)
-    expect(url.searchParams.get('models')).toBe('ecmwf_ifs025')
+    expect(url.searchParams.get('models')).toBe('ecmwf_ifs')
     expect(result.horizons.map(horizon => horizon.total)).toEqual([48, 96, 144])
     expect(result.horizons.every(horizon => horizon.coverage === 100)).toBe(true)
     expect(isWeatherModelUsable(result)).toBe(true)
     expect(result.metadata.status).toBe('live')
     expect(result.metadata.lastSuccessfulAt).toBe(result.metadata.retrievedAt)
+  })
+
+  it.each([
+    ['GFS', fetchGfs, GFS_BASE, GFS_MODEL],
+    ['UKMO', fetchUkmo, UKMO_BASE, UKMO_MODEL],
+  ] as const)('requests and parses %s through the common weather-model contract', async (
+    _label,
+    fetcher,
+    endpoint,
+    model,
+  ) => {
+    const fetchMock = vi.fn((_input: string | URL | Request) =>
+      Promise.resolve(forecastResponse(1.5)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetcher(16.8409, 96.1735)
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]))
+
+    expect(`${url.origin}${url.pathname}`).toBe(endpoint)
+    expect(url.searchParams.get('models')).toBe(model)
+    expect(result.model).toBe(model)
+    expect(result.horizons.map(horizon => horizon.total)).toEqual([36, 72, 108])
+    expect(result.horizons.every(horizon => horizon.coverage === 100)).toBe(true)
+    expect(isWeatherModelUsable(result)).toBe(true)
+    expect(result.metadata.status).toBe('live')
   })
 
   it('marks an HTTP-successful all-null rainfall response unavailable and not fresh', async () => {

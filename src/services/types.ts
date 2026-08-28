@@ -1,9 +1,12 @@
 export type SourceStatus =
   | 'live'
   | 'cached'
+  | 'expired'
   | 'unavailable'
   | 'error'
   | 'incomplete'
+
+export type WeatherModelKey = 'aifs' | 'ifs' | 'gfs' | 'ukmo'
 
 export type RiverTrend = 'rising' | 'stable' | 'falling' | 'unavailable'
 
@@ -42,6 +45,8 @@ export interface WeatherModelData {
   series: { time: string; value: number | null }[]
   metadata: SourceMetadata
 }
+
+export type WeatherModels = Record<WeatherModelKey, WeatherModelData>
 
 export interface RiverDay {
   date: string
@@ -92,7 +97,7 @@ export type AggregatorStatus = 'live' | 'partial' | 'error'
 export interface EnvironmentalData {
   location: { latitude: number; longitude: number }
   fingerprint: string
-  weatherModels: { aifs: WeatherModelData; ifs: WeatherModelData }
+  weatherModels: WeatherModels
   river: RiverData
   terrain: TerrainData
   retrievedAt: string

@@ -4,8 +4,8 @@ import {
   selectWeatherSource,
   sourceAgeMs,
 } from './environmentalData'
-import { readStaleCache, writeCache } from './cache'
-import { WEATHER_MAX_STALE_MS } from './config'
+import { environmentalCacheKey, readStaleCache, writeCache } from './cache'
+import { ENV_CACHE_SCHEMA_VERSION, WEATHER_MAX_STALE_MS } from './config'
 
 const fingerprint = '16.5000,95.0000'
 const nowMs = Date.parse('2026-08-19T00:00:00.000Z')
@@ -123,5 +123,18 @@ describe('source quality and coordinate-safe cache', () => {
 
     expect(readStaleCache(16.5, 95, storage)).toEqual({ marker: 'A' })
     expect(readStaleCache(17.5, 96, storage)).toBeNull()
+  })
+
+  it('rejects an environmental cache entry from the previous two-model schema', () => {
+    const storage = new MemoryStorage()
+    storage.setItem(environmentalCacheKey(fingerprint), JSON.stringify({
+      schemaVersion: ENV_CACHE_SCHEMA_VERSION - 1,
+      fingerprint,
+      data: { marker: 'legacy-two-model-cache' },
+      storedAt: '2026-08-19T00:00:00.000Z',
+    }))
+
+    expect(ENV_CACHE_SCHEMA_VERSION).toBe(5)
+    expect(readStaleCache(16.5, 95, storage)).toBeNull()
   })
 })

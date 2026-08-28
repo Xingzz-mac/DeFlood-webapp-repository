@@ -1,4 +1,4 @@
-import type { EnvironmentalData, SourceStatus } from './types'
+import type { EnvironmentalData, SourceStatus, WeatherModelKey } from './types'
 
 export type CalculationStatus = 'NOT_CALCULATED' | 'INCOMPLETE' | 'COMPLETE'
 export type FloodHazardLevel = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -7,22 +7,25 @@ export type AgreementLabel =
   | 'Moderate'
   | 'Weak'
   | 'Poor'
-  | 'Unavailable — single weather model'
+  | 'Unavailable — single usable weather model'
   | 'Unavailable — no usable weather models'
-  | 'Unavailable — incomplete comparison horizons'
 export type ModelAgreementStatus =
-  | 'BOTH_MODELS_COMPLETE_FOR_AGREEMENT'
+  | 'FOUR_USABLE_MODELS'
+  | 'THREE_USABLE_MODELS'
+  | 'TWO_USABLE_MODELS'
   | 'SINGLE_USABLE_MODEL'
   | 'NO_USABLE_MODELS'
-  | 'INCOMPLETE_COMPARISON_HORIZONS'
-export type WeatherConsensusSource = 'aifs+ifs' | 'aifs' | 'ifs' | 'unavailable'
+export type WeatherConsensusSource = 'multi-model' | WeatherModelKey | 'unavailable'
 export type TrendLabel = 'sharply rising' | 'rising' | 'stable' | 'falling' | 'sharply falling'
 
 export interface AgreementHorizon {
   hours: 24 | 48 | 72
-  aifs: number
-  ifs: number
+  modelTotals: Array<{ key: WeatherModelKey; total: number }>
+  modelCount: number
+  consensus: number
+  meanAbsoluteDeviation: number
   differenceRatio: number
+  score: number
   weight: number
 }
 
@@ -31,16 +34,23 @@ export interface ModelAgreement {
   score: number | null
   label: AgreementLabel
   weightedDifference: number | null
+  usableModelCount: number
+  totalConfiguredModelCount: number
+  coveredHorizonWeight: number
   horizons: AgreementHorizon[]
 }
 
 export interface ConsensusHorizon {
   hours: 24 | 48 | 72
   value: number | null
+  modelCount: number
+  modelKeys: WeatherModelKey[]
 }
 
 export interface WeatherConsensus {
   source: WeatherConsensusSource
+  usableModelCount: number
+  totalConfiguredModelCount: number
   horizons: ConsensusHorizon[]
 }
 
@@ -105,6 +115,8 @@ export interface FreshnessResult {
   sources: {
     aifs: FreshnessSourceScore
     ifs: FreshnessSourceScore
+    gfs: FreshnessSourceScore
+    ukmo: FreshnessSourceScore
     river: FreshnessSourceScore
     elevation: FreshnessSourceScore
   }
@@ -120,6 +132,8 @@ export interface ConfidenceComponents {
 export interface SourceInformation {
   aifs: SourceStatus
   ifs: SourceStatus
+  gfs: SourceStatus
+  ukmo: SourceStatus
   river: SourceStatus
   elevation: SourceStatus
   historical: HistoricalBaselineStatus | 'not-requested'

@@ -51,6 +51,7 @@ function statusBadge(status: SourceStatus): ReactNode {
   const styles: Record<SourceStatus, string> = {
     live: 'bg-green-50 text-green-700',
     cached: 'bg-blue-50 text-blue-700',
+    expired: 'bg-amber-50 text-amber-700',
     incomplete: 'bg-amber-50 text-amber-700',
     unavailable: 'bg-gray-100 text-gray-600',
     error: 'bg-red-50 text-red-700',
@@ -66,10 +67,12 @@ function SourceHeader({
   icon,
   title,
   metadata,
+  status,
 }: {
   icon: ReactNode
   title: string
   metadata: SourceMetadata
+  status?: SourceStatus
 }) {
   return (
     <div className="border-b border-gray-100 pb-3">
@@ -84,7 +87,7 @@ function SourceHeader({
             </p>
           </div>
         </div>
-        {statusBadge(metadata.status)}
+        {statusBadge(status ?? metadata.status)}
       </div>
       {metadata.refreshAttempt && (
         <p className="mt-2 text-xs text-amber-700">
@@ -96,10 +99,10 @@ function SourceHeader({
   )
 }
 
-function WeatherCard({ model }: { model: WeatherModelData }) {
+function WeatherCard({ model, status }: { model: WeatherModelData; status: SourceStatus }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
-      <SourceHeader icon={<IconDroplets size={18} />} title={model.label} metadata={model.metadata} />
+      <SourceHeader icon={<IconDroplets size={18} />} title={model.label} metadata={model.metadata} status={status} />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {model.horizons.map(horizon => (
           <div key={horizon.hours} className="rounded-xl bg-gray-50 p-3">
@@ -362,6 +365,8 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
               <span>Freshness: {risk.confidenceComponents.freshness.toFixed(1)} / 100</span>
               <span>AIFS: {risk.sourceInformation.aifs}</span>
               <span>IFS: {risk.sourceInformation.ifs}</span>
+              <span>GFS: {risk.sourceInformation.gfs}</span>
+              <span>UKMO: {risk.sourceInformation.ukmo}</span>
               <span>River: {risk.sourceInformation.river}</span>
               <span>Elevation: {risk.sourceInformation.elevation}</span>
             </div>
@@ -377,20 +382,27 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
                   <div className="mt-1 font-mono font-bold text-gray-900">
                     {horizon.value === null ? 'Unavailable' : `${horizon.value.toFixed(1)} mm`}
                   </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {horizon.modelCount} usable {horizon.modelCount === 1 ? 'model' : 'models'}
+                  </div>
                 </div>
               ))}
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
               <div><span className="text-gray-500">Consensus source:</span> <strong>{risk.weatherConsensus.source}</strong></div>
+              <div><span className="text-gray-500">Usable models:</span> <strong>{risk.modelAgreement.usableModelCount}/{risk.modelAgreement.totalConfiguredModelCount}</strong></div>
               <div><span className="text-gray-500">Agreement:</span> <strong>{risk.modelAgreement.label}</strong></div>
               <div><span className="text-gray-500">Agreement score:</span> <strong>{risk.modelAgreement.score?.toFixed(1) ?? 'Unavailable'}</strong></div>
               <div><span className="text-gray-500">Weighted difference:</span> <strong>{risk.modelAgreement.weightedDifference === null ? 'Unavailable' : `${(risk.modelAgreement.weightedDifference * 100).toFixed(1)}%`}</strong></div>
+              <div><span className="text-gray-500">Agreement horizon coverage:</span> <strong>{(risk.modelAgreement.coveredHorizonWeight * 100).toFixed(0)}%</strong></div>
               <div><span className="text-gray-500">Rainfall severity:</span> <strong>{risk.rainfallSeverity?.toFixed(1) ?? 'Unavailable'}</strong></div>
             </div>
             <p className="mt-3 text-xs text-gray-500">Model agreement affects Data Confidence only and never directly changes Flood Hazard.</p>
           </div>
-          <WeatherCard model={data.weatherModels.aifs} />
-          <WeatherCard model={data.weatherModels.ifs} />
+          <WeatherCard model={data.weatherModels.aifs} status={risk.sourceInformation.aifs} />
+          <WeatherCard model={data.weatherModels.ifs} status={risk.sourceInformation.ifs} />
+          <WeatherCard model={data.weatherModels.gfs} status={risk.sourceInformation.gfs} />
+          <WeatherCard model={data.weatherModels.ukmo} status={risk.sourceInformation.ukmo} />
           <RiverCard river={data.river} />
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
             <h2 className="font-semibold text-gray-900">Historical river comparison</h2>

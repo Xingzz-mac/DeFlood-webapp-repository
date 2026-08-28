@@ -3,7 +3,9 @@ import { writeCache } from './cache'
 import {
   AIFS_MODEL,
   ENVIRONMENTAL_REQUEST_TIMEOUT_MS,
+  GFS_MODEL,
   IFS_MODEL,
+  UKMO_MODEL,
 } from './config'
 import { fetchEnvironmentalData } from './environmentalData'
 import type {
@@ -110,6 +112,8 @@ function cachedEnvironmental(): EnvironmentalData {
     weatherModels: {
       aifs: weather(AIFS_MODEL, 'ECMWF AIFS — AI Forecast', cachedAt),
       ifs: weather(IFS_MODEL, 'ECMWF IFS — Physics-Based Forecast', cachedAt),
+      gfs: weather(GFS_MODEL, 'NOAA GFS Global — Physics-Based Forecast', cachedAt),
+      ukmo: weather(UKMO_MODEL, 'UKMO Global 10 km — Physics-Based Forecast', cachedAt),
     },
     river: river(cachedAt),
     terrain: terrain(cachedAt),
@@ -164,11 +168,18 @@ function rejectWhenAborted(signal: AbortSignal | null | undefined): Promise<Resp
   })
 }
 
-function fetchMockWithTimeout(source: 'aifs' | 'river') {
+function fetchMockWithTimeout(source: 'aifs' | 'gfs' | 'river') {
   return vi.fn((input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : String(input))
-    if (url.pathname.endsWith('/ecmwf')) {
+    if (
+      url.pathname.endsWith('/ecmwf')
+      || url.pathname.endsWith('/gfs')
+      || url.pathname.endsWith('/forecast')
+    ) {
       if (source === 'aifs' && url.searchParams.get('models') === AIFS_MODEL) {
+        return rejectWhenAborted(init?.signal)
+      }
+      if (source === 'gfs' && url.searchParams.get('models') === GFS_MODEL) {
         return rejectWhenAborted(init?.signal)
       }
       return Promise.resolve(forecastResponse())
@@ -208,6 +219,26 @@ describe('environmental request timeouts', () => {
     expect(result.weatherModels.aifs.metadata.status).toBe('cached')
     expect(result.weatherModels.aifs.metadata.refreshAttempt?.error).toContain('AIFS request timed out')
     expect(result.weatherModels.ifs.metadata.status).toBe('live')
+    expect(result.weatherModels.gfs.metadata.status).toBe('live')
+    expect(result.weatherModels.ukmo.metadata.status).toBe('live')
+    expect(result.river.metadata.status).toBe('live')
+    expect(result.terrain.metadata.status).toBe('live')
+    expect(result.status).toBe('partial')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('times out GFS independently without blocking the other three weather models', async () => {
+    vi.stubGlobal('fetch', fetchMockWithTimeout('gfs'))
+
+    const pending = fetchEnvironmentalData(latitude, longitude)
+    await vi.advanceTimersByTimeAsync(ENVIRONMENTAL_REQUEST_TIMEOUT_MS)
+    const result = await pending
+
+    expect(result.weatherModels.aifs.metadata.status).toBe('live')
+    expect(result.weatherModels.ifs.metadata.status).toBe('live')
+    expect(result.weatherModels.gfs.metadata.status).toBe('error')
+    expect(result.weatherModels.gfs.metadata.error).toContain('GFS request timed out')
+    expect(result.weatherModels.ukmo.metadata.status).toBe('live')
     expect(result.river.metadata.status).toBe('live')
     expect(result.terrain.metadata.status).toBe('live')
     expect(result.status).toBe('partial')
@@ -226,6 +257,8 @@ describe('environmental request timeouts', () => {
     expect(result.river.metadata.error).toContain('Current GloFAS request timed out')
     expect(result.weatherModels.aifs.metadata.status).toBe('live')
     expect(result.weatherModels.ifs.metadata.status).toBe('live')
+    expect(result.weatherModels.gfs.metadata.status).toBe('live')
+    expect(result.weatherModels.ukmo.metadata.status).toBe('live')
     expect(result.terrain.metadata.status).toBe('live')
     expect(result.status).toBe('partial')
     expect(vi.getTimerCount()).toBe(0)

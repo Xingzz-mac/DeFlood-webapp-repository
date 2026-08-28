@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { calculateModelAgreement } from './modelAgreement'
-import type { SourceMetadata, WeatherModelData } from './types'
+import { buildWeatherConsensus, calculateModelAgreement } from './modelAgreement'
+import type {
+  SourceMetadata,
+  WeatherModelData,
+  WeatherModelKey,
+  WeatherModels,
+} from './types'
 
 const fingerprint = '16.5000,95.0000'
 
 function model(
   totals: [number, number, number] | null,
-  incomplete48 = false,
+  incompleteHours: number[] = [],
 ): WeatherModelData {
   const usable = totals !== null
   const metadata: SourceMetadata = {
-    status: incomplete48 ? 'incomplete' : usable ? 'live' : 'unavailable',
+    status: usable ? 'live' : 'unavailable',
     retrievedAt: '2026-08-19T00:00:00.000Z',
     lastSuccessfulAt: usable ? '2026-08-19T00:00:00.000Z' : null,
     cachedAt: null,
@@ -25,83 +30,173 @@ function model(
     model: 'test',
     unit: 'mm',
     series: [],
-    horizons: ([24, 48, 72] as const).map((hours, index) => ({
-      hours,
-      total: incomplete48 && hours === 48 ? null : totals?.[index] ?? null,
-      expectedHours: hours,
-      validHours: usable && !(incomplete48 && hours === 48) ? hours : 0,
-      coverage: usable && !(incomplete48 && hours === 48) ? 100 : 0,
-      complete: usable && !(incomplete48 && hours === 48),
-    })),
+    horizons: ([24, 48, 72] as const).map((hours, index) => {
+      const complete = usable && !incompleteHours.includes(hours)
+      return {
+        hours,
+        total: complete ? totals[index] : null,
+        expectedHours: hours,
+        validHours: complete ? hours : 0,
+        coverage: complete ? 100 : 0,
+        complete,
+      }
+    }),
     metadata,
   }
 }
 
-describe('AIFS and IFS agreement', () => {
-  it('calculates agreement when both models are usable', () => {
-    const result = calculateModelAgreement(model([10, 20, 40]), model([20, 20, 20]))
+function models(overrides: Partial<Record<WeatherModelKey, WeatherModelData>> = {}): WeatherModels {
+  const defaultModel = model([20, 40, 60])
+  return {
+    aifs: overrides.aifs ?? defaultModel,
+    ifs: overrides.ifs ?? defaultModel,
+    gfs: overrides.gfs ?? defaultModel,
+    ukmo: overrides.ukmo ?? defaultModel,
+  }
+}
 
-    expect(result.weightedDifference).toBeCloseTo(
-      (10 / 15) * 0.5 + 0 * 0.3 + (20 / 30) * 0.2,
-    )
-    expect(result.status).toBe('BOTH_MODELS_COMPLETE_FOR_AGREEMENT')
+describe('four-model rainfall consensus', () => {
+  it('uses the median for four usable models and resists one extreme outlier', () => {
+    const result = buildWeatherConsensus(models({
+      aifs: model([10, 20, 30]),
+      ifs: model([11, 21, 31]),
+      gfs: model([12, 22, 32]),
+      ukmo: model([1000, 2000, 3000]),
+    }))
+
+    expect(result.usableModelCount).toBe(4)
+    expect(result.horizons.map(horizon => horizon.value)).toEqual([11.5, 21.5, 31.5])
+  })
+
+  it('uses the median for three usable models', () => {
+    const result = buildWeatherConsensus(models({
+      aifs: model([10, 20, 30]),
+      ifs: model([30, 40, 50]),
+      gfs: model([20, 30, 40]),
+      ukmo: model(null),
+    }))
+
+    expect(result.usableModelCount).toBe(3)
+    expect(result.horizons.map(horizon => horizon.value)).toEqual([20, 30, 40])
+  })
+
+  it('uses the arithmetic mean for exactly two usable models', () => {
+    const result = buildWeatherConsensus(models({
+      aifs: model([10, 20, 30]),
+      ifs: model([30, 50, 70]),
+      gfs: model(null),
+      ukmo: model(null),
+    }))
+
+    expect(result.usableModelCount).toBe(2)
+    expect(result.horizons.map(horizon => horizon.value)).toEqual([20, 35, 50])
+  })
+
+  it('uses a single model for rainfall without fabricating agreement', () => {
+    const current = models({
+      aifs: model(null),
+      ifs: model(null),
+      gfs: model([7, 14, 21]),
+      ukmo: model(null),
+    })
+
+    expect(buildWeatherConsensus(current)).toMatchObject({
+      source: 'gfs',
+      usableModelCount: 1,
+      horizons: [{ value: 7 }, { value: 14 }, { value: 21 }],
+    })
+    expect(calculateModelAgreement(current)).toMatchObject({
+      status: 'SINGLE_USABLE_MODEL',
+      score: null,
+      label: 'Unavailable — single usable weather model',
+      usableModelCount: 1,
+      horizons: [],
+    })
+  })
+
+  it('reports rainfall unavailable with zero usable models', () => {
+    const current = models({
+      aifs: model(null),
+      ifs: model(null),
+      gfs: model(null),
+      ukmo: model(null),
+    })
+
+    expect(buildWeatherConsensus(current).horizons.every(horizon => horizon.value === null)).toBe(true)
+    expect(calculateModelAgreement(current)).toMatchObject({
+      status: 'NO_USABLE_MODELS',
+      score: null,
+      label: 'Unavailable — no usable weather models',
+      usableModelCount: 0,
+    })
+  })
+
+  it('is independent of which model key receives each total', () => {
+    const first = buildWeatherConsensus(models({
+      aifs: model([10, 20, 30]),
+      ifs: model([20, 30, 40]),
+      gfs: model([30, 40, 50]),
+      ukmo: model([40, 50, 60]),
+    }))
+    const reordered = buildWeatherConsensus(models({
+      aifs: model([40, 50, 60]),
+      ifs: model([10, 20, 30]),
+      gfs: model([30, 40, 50]),
+      ukmo: model([20, 30, 40]),
+    }))
+
+    expect(reordered.horizons.map(horizon => horizon.value))
+      .toEqual(first.horizons.map(horizon => horizon.value))
+  })
+})
+
+describe('multi-model agreement', () => {
+  it('uses mean absolute deviation from consensus for each horizon', () => {
+    const result = calculateModelAgreement(models({
+      aifs: model([10, 10, 10]),
+      ifs: model([20, 20, 20]),
+      gfs: model([30, 30, 30]),
+      ukmo: model([40, 40, 40]),
+    }))
+
+    expect(result.status).toBe('FOUR_USABLE_MODELS')
+    expect(result.horizons[0]).toMatchObject({
+      modelCount: 4,
+      consensus: 25,
+      meanAbsoluteDeviation: 10,
+      differenceRatio: 0.4,
+    })
+    expect(result.score).toBe(52.5)
     expect(result.label).toBe('Weak')
   })
 
-  it('reports a single usable AIFS model', () => {
-    const result = calculateModelAgreement(model([20, 40, 60]), model(null))
-
-    expect(result.score).toBeNull()
-    expect(result.status).toBe('SINGLE_USABLE_MODEL')
-    expect(result.weightedDifference).toBeNull()
-    expect(result.label).toBe('Unavailable — single weather model')
-  })
-
-  it('reports a single usable IFS model', () => {
-    const result = calculateModelAgreement(model(null), model([20, 40, 60]))
-
-    expect(result.score).toBeNull()
-    expect(result.status).toBe('SINGLE_USABLE_MODEL')
-    expect(result.weightedDifference).toBeNull()
-    expect(result.label).toBe('Unavailable — single weather model')
-  })
-
-  it('reports that neither model is usable without implying one is available', () => {
-    const result = calculateModelAgreement(model(null), model(null))
-
-    expect(result.score).toBeNull()
-    expect(result.status).toBe('NO_USABLE_MODELS')
-    expect(result.weightedDifference).toBeNull()
-    expect(result.label).toBe('Unavailable — no usable weather models')
-  })
-
   it.each([
-    ['AIFS', true, false],
-    ['IFS', false, true],
-  ] as const)('reports incomplete comparison horizons when %s 48h is incomplete', (_, aifsIncomplete, ifsIncomplete) => {
-    const result = calculateModelAgreement(
-      model([20, 40, 60], aifsIncomplete),
-      model([20, 40, 60], ifsIncomplete),
-    )
+    [3, 'THREE_USABLE_MODELS'],
+    [2, 'TWO_USABLE_MODELS'],
+  ] as const)('reports the explicit %s-model availability status', (count, status) => {
+    const keys: WeatherModelKey[] = ['aifs', 'ifs', 'gfs', 'ukmo']
+    const current = models(Object.fromEntries(keys.map((key, index) => [
+      key,
+      index < count ? model([20, 40, 60]) : model(null),
+    ])) as Partial<Record<WeatherModelKey, WeatherModelData>>)
 
-    expect(result.status).toBe('INCOMPLETE_COMPARISON_HORIZONS')
-    expect(result.score).toBeNull()
-    expect(result.label).toBe('Unavailable — incomplete comparison horizons')
+    expect(calculateModelAgreement(current)).toMatchObject({
+      status,
+      usableModelCount: count,
+      totalConfiguredModelCount: 4,
+    })
   })
 
-  it.each([
-    [0.15, 'Strong'],
-    [0.151, 'Moderate'],
-    [0.3, 'Moderate'],
-    [0.301, 'Weak'],
-    [0.5, 'Weak'],
-    [0.501, 'Poor'],
-  ] as const)('labels a weighted difference of %s as %s', (ratio, label) => {
-    const low = 100 * (1 - ratio / 2)
-    const high = 100 * (1 + ratio / 2)
-    expect(calculateModelAgreement(
-      model([low, low, low]),
-      model([high, high, high]),
-    ).label).toBe(label)
+  it('does not renormalize missing agreement horizons upward', () => {
+    const result = calculateModelAgreement(models({
+      aifs: model([20, 40, 60]),
+      ifs: model([20, 40, 60], [48]),
+      gfs: model([20, 40, 60], [48]),
+      ukmo: model([20, 40, 60], [48]),
+    }))
+
+    expect(result.horizons.map(horizon => horizon.hours)).toEqual([24, 72])
+    expect(result.coveredHorizonWeight).toBe(0.7)
+    expect(result.score).toBe(70)
   })
 })

@@ -6,15 +6,20 @@ import type {
   SourceMetadata,
   TerrainData,
   WeatherModelData,
+  WeatherModelKey,
+  WeatherModels,
 } from './types'
 import {
-  AIFS_MODEL,
   ELEVATION_MAX_STALE_MS,
-  IFS_MODEL,
   RIVER_MAX_STALE_MS,
   WEATHER_MAX_STALE_MS,
 } from './config'
-import { fetchAifs, fetchIfs, isWeatherModelUsable } from './ecmwf'
+import {
+  fetchWeatherModel,
+  isWeatherModelUsable,
+  WEATHER_MODEL_DEFINITIONS,
+  WEATHER_MODEL_KEYS,
+} from './weatherModels'
 import {
   buildEnsembleAvailability,
   fetchRiverDischarge,
@@ -246,7 +251,7 @@ function expiredMetadata(
 ): SourceMetadata {
   return {
     ...metadata,
-    status: 'unavailable',
+    status: 'expired',
     ageMs: sourceAgeMs(metadata, nowMs),
     cached: false,
     coordinateFingerprint,
@@ -348,21 +353,18 @@ function cachedTerrainOrExpired(
 }
 
 function computeOverall(
-  aifs: WeatherModelData,
-  ifs: WeatherModelData,
+  weatherModels: WeatherModels,
   river: RiverData,
   terrain: TerrainData,
 ): AggregatorStatus {
   const statuses = [
-    aifs.metadata.status,
-    ifs.metadata.status,
+    ...WEATHER_MODEL_KEYS.map(key => weatherModels[key].metadata.status),
     river.metadata.status,
     terrain.metadata.status,
   ]
   if (statuses.every(status => status === 'live')) return 'live'
   if (
-    isWeatherModelUsable(aifs)
-    || isWeatherModelUsable(ifs)
+    WEATHER_MODEL_KEYS.some(key => isWeatherModelUsable(weatherModels[key]))
     || riverUsable(river)
     || terrainUsable(terrain)
   ) {
@@ -376,18 +378,24 @@ function asCachedEnvironmental(
   nowMs = Date.now(),
 ): EnvironmentalData | null {
   const coordinateFingerprint = data.fingerprint
-  const aifs = cachedWeatherOrExpired(data.weatherModels.aifs, coordinateFingerprint, nowMs)
-  const ifs = cachedWeatherOrExpired(data.weatherModels.ifs, coordinateFingerprint, nowMs)
+  const weatherModels = Object.fromEntries(WEATHER_MODEL_KEYS.map(key => [
+    key,
+    cachedWeatherOrExpired(data.weatherModels[key], coordinateFingerprint, nowMs),
+  ])) as WeatherModels
   const river = cachedRiverOrExpired(data.river, coordinateFingerprint, nowMs)
   const terrain = cachedTerrainOrExpired(data.terrain, coordinateFingerprint, nowMs)
-  const hasUsableCache = [aifs, ifs, river, terrain].some(source => source.metadata.cached)
+  const hasUsableCache = [
+    ...WEATHER_MODEL_KEYS.map(key => weatherModels[key]),
+    river,
+    terrain,
+  ].some(source => source.metadata.cached)
   if (!hasUsableCache) return null
   return {
     ...data,
-    weatherModels: { aifs, ifs },
+    weatherModels,
     river,
     terrain,
-    status: computeOverall(aifs, ifs, river, terrain),
+    status: computeOverall(weatherModels, river, terrain),
     stale: true,
   }
 }
@@ -426,29 +434,35 @@ export async function fetchEnvironmentalData(
   const cached = readStaleCache<EnvironmentalData>(latitude, longitude)
   const sameCoordinateCache = cached?.fingerprint === coordinateFingerprint ? cached : null
 
-  const [aifsResult, ifsResult, riverResult, elevationResult] = await Promise.allSettled([
-    withRequestTimeout('AIFS', sourceSignal => fetchAifs(latitude, longitude, sourceSignal), signal),
-    withRequestTimeout('IFS', sourceSignal => fetchIfs(latitude, longitude, sourceSignal), signal),
-    withRequestTimeout('Current GloFAS', sourceSignal => fetchRiverDischarge(latitude, longitude, sourceSignal), signal),
-    withRequestTimeout('Elevation', sourceSignal => fetchElevation(latitude, longitude, sourceSignal), signal),
+  const [weatherResults, otherResults] = await Promise.all([
+    Promise.allSettled(WEATHER_MODEL_KEYS.map(key => {
+      const definition = WEATHER_MODEL_DEFINITIONS[key]
+      return withRequestTimeout(
+        definition.timeoutLabel,
+        sourceSignal => fetchWeatherModel(key, latitude, longitude, sourceSignal),
+        signal,
+      )
+    })),
+    Promise.allSettled([
+      withRequestTimeout('Current GloFAS', sourceSignal => fetchRiverDischarge(latitude, longitude, sourceSignal), signal),
+      withRequestTimeout('Elevation', sourceSignal => fetchElevation(latitude, longitude, sourceSignal), signal),
+    ]),
   ])
+  const [riverResult, elevationResult] = otherResults
 
-  const currentAifs = aifsResult.status === 'fulfilled'
-    ? aifsResult.value
-    : errorWeather(
-        'ECMWF AIFS — AI Forecast',
-        AIFS_MODEL,
-        coordinateFingerprint,
-        reasonMessage(aifsResult.reason, 'AIFS fetch failed'),
-      )
-  const currentIfs = ifsResult.status === 'fulfilled'
-    ? ifsResult.value
-    : errorWeather(
-        'ECMWF IFS — Physics-Based Forecast',
-        IFS_MODEL,
-        coordinateFingerprint,
-        reasonMessage(ifsResult.reason, 'IFS fetch failed'),
-      )
+  const currentWeatherModels = Object.fromEntries(WEATHER_MODEL_KEYS.map((key, index) => {
+    const result = weatherResults[index]
+    const definition = WEATHER_MODEL_DEFINITIONS[key]
+    const current = result.status === 'fulfilled'
+      ? result.value
+      : errorWeather(
+          definition.label,
+          definition.model,
+          coordinateFingerprint,
+          reasonMessage(result.reason, `${definition.timeoutLabel} fetch failed`),
+        )
+    return [key, current]
+  })) as WeatherModels
   const currentRiver = riverResult.status === 'fulfilled'
     ? riverResult.value
     : errorRiver(
@@ -463,18 +477,15 @@ export async function fetchEnvironmentalData(
       )
 
   const nowMs = Date.now()
-  const aifsSelection = selectWeatherSource(
-    currentAifs,
-    sameCoordinateCache?.weatherModels.aifs,
-    coordinateFingerprint,
-    nowMs,
-  )
-  const ifsSelection = selectWeatherSource(
-    currentIfs,
-    sameCoordinateCache?.weatherModels.ifs,
-    coordinateFingerprint,
-    nowMs,
-  )
+  const weatherSelections = Object.fromEntries(WEATHER_MODEL_KEYS.map(key => [
+    key,
+    selectWeatherSource(
+      currentWeatherModels[key],
+      sameCoordinateCache?.weatherModels[key],
+      coordinateFingerprint,
+      nowMs,
+    ),
+  ])) as Record<WeatherModelKey, SourceSelection<WeatherModelData>>
   const riverSelection = selectRiverSource(
     currentRiver,
     sameCoordinateCache?.river,
@@ -487,16 +498,23 @@ export async function fetchEnvironmentalData(
     coordinateFingerprint,
     nowMs,
   )
-  const selections = [aifsSelection, ifsSelection, riverSelection, terrainSelection]
+  const selections = [
+    ...WEATHER_MODEL_KEYS.map(key => weatherSelections[key]),
+    riverSelection,
+    terrainSelection,
+  ]
   const hasFreshAccepted = selections.some(selection => selection.acceptedFresh)
   const cacheWrittenAt = new Date(nowMs).toISOString()
 
-  const aifs = aifsSelection.acceptedFresh && hasFreshAccepted
-    ? stampCachedAt(aifsSelection.data, cacheWrittenAt)
-    : aifsSelection.data
-  const ifs = ifsSelection.acceptedFresh && hasFreshAccepted
-    ? stampCachedAt(ifsSelection.data, cacheWrittenAt)
-    : ifsSelection.data
+  const weatherModels = Object.fromEntries(WEATHER_MODEL_KEYS.map(key => {
+    const selection = weatherSelections[key]
+    return [
+      key,
+      selection.acceptedFresh && hasFreshAccepted
+        ? stampCachedAt(selection.data, cacheWrittenAt)
+        : selection.data,
+    ]
+  })) as WeatherModels
   const river = riverSelection.acceptedFresh && hasFreshAccepted
     ? stampCachedAt(riverSelection.data, cacheWrittenAt)
     : riverSelection.data
@@ -506,11 +524,11 @@ export async function fetchEnvironmentalData(
   const data: EnvironmentalData = {
     location: { latitude, longitude },
     fingerprint: coordinateFingerprint,
-    weatherModels: { aifs, ifs },
+    weatherModels,
     river,
     terrain,
     retrievedAt: cacheWrittenAt,
-    status: computeOverall(aifs, ifs, river, terrain),
+    status: computeOverall(weatherModels, river, terrain),
     stale: selections.some(selection => selection.usedCache),
   }
 

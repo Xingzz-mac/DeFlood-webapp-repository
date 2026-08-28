@@ -24,7 +24,13 @@ import type {
   RiskEngineInput,
   RiskResult,
 } from './riskTypes'
-import type { EnvironmentalData } from './types'
+import type {
+  EnvironmentalData,
+  SourceStatus,
+  WeatherModelData,
+  WeatherModels,
+} from './types'
+import { isWeatherModelUsable, WEATHER_MODEL_KEYS } from './weatherModels'
 
 export function classifyHazard(score: number): FloodHazardLevel {
   if (score < 40) return 'LOW'
@@ -69,8 +75,8 @@ function latestSuccessfulUpdate(
   historicalLastSuccessfulAt: string | null,
 ): string | null {
   const candidates = [
-    environmental.weatherModels.aifs.metadata.lastSuccessfulAt,
-    environmental.weatherModels.ifs.metadata.lastSuccessfulAt,
+    ...WEATHER_MODEL_KEYS.map(key =>
+      environmental.weatherModels[key].metadata.lastSuccessfulAt),
     environmental.river.metadata.lastSuccessfulAt,
     environmental.terrain.metadata.lastSuccessfulAt,
     historicalLastSuccessfulAt,
@@ -92,6 +98,8 @@ function buildFactors(result: {
   agreementScore: number | null
   agreementStatus: ModelAgreementStatus
   consensusSource: string
+  usableModelCount: number
+  totalConfiguredModelCount: number
   ensembleScore: number | null
   historicalAvailable: boolean
   primaryRiverUsable: boolean
@@ -142,18 +150,20 @@ function buildFactors(result: {
     })
   }
   switch (result.agreementStatus) {
-    case 'BOTH_MODELS_COMPLETE_FOR_AGREEMENT':
+    case 'FOUR_USABLE_MODELS':
+    case 'THREE_USABLE_MODELS':
+    case 'TWO_USABLE_MODELS':
       if (result.agreementScore !== null) {
         factors.push({
           priority: result.agreementScore >= 85 ? 55 : 60,
-          text: `AIFS and IFS rainfall agreement is ${result.agreementLabel.toLowerCase()}, affecting Data Confidence only.`,
+          text: `${result.usableModelCount} of ${result.totalConfiguredModelCount} weather models are usable; multi-model rainfall agreement is ${result.agreementLabel.toLowerCase()}, affecting Data Confidence only.`,
         })
       }
       break
     case 'SINGLE_USABLE_MODEL':
       factors.push({
         priority: 85,
-        text: result.consensusSource === 'aifs' || result.consensusSource === 'ifs'
+        text: WEATHER_MODEL_KEYS.includes(result.consensusSource as typeof WEATHER_MODEL_KEYS[number])
           ? `${result.consensusSource.toUpperCase()} is the only usable rainfall model, reducing model-agreement confidence.`
           : 'Only one weather model is usable for rainfall hazard, reducing model-agreement confidence.',
       })
@@ -161,13 +171,7 @@ function buildFactors(result: {
     case 'NO_USABLE_MODELS':
       factors.push({
         priority: 88,
-        text: 'Neither AIFS nor IFS is usable, so rainfall hazard and weather-model agreement are unavailable.',
-      })
-      break
-    case 'INCOMPLETE_COMPARISON_HORIZONS':
-      factors.push({
-        priority: 58,
-        text: 'Both weather models are usable for rainfall hazard, but model-agreement confidence is unavailable because one or more comparison horizons are incomplete.',
+        text: 'No configured weather model is usable, so rainfall hazard and multi-model agreement are unavailable.',
       })
       break
   }
@@ -214,9 +218,22 @@ function emptyRiskResult(nowMs: number): RiskResult {
       score: null,
       label: 'Unavailable — no usable weather models',
       weightedDifference: null,
+      usableModelCount: 0,
+      totalConfiguredModelCount: WEATHER_MODEL_KEYS.length,
+      coveredHorizonWeight: 0,
       horizons: [],
     },
-    weatherConsensus: { source: 'unavailable', horizons: [24, 48, 72].map(hours => ({ hours: hours as 24 | 48 | 72, value: null })) },
+    weatherConsensus: {
+      source: 'unavailable',
+      usableModelCount: 0,
+      totalConfiguredModelCount: WEATHER_MODEL_KEYS.length,
+      horizons: [24, 48, 72].map(hours => ({
+        hours: hours as 24 | 48 | 72,
+        value: null,
+        modelCount: 0,
+        modelKeys: [],
+      })),
+    },
     rainfallSeverity: null,
     riverPercentile: null,
     riverAbnormality: null,
@@ -232,6 +249,8 @@ function emptyRiskResult(nowMs: number): RiskResult {
       sources: {
         aifs: { ...unavailableSource },
         ifs: { ...unavailableSource },
+        gfs: { ...unavailableSource },
+        ukmo: { ...unavailableSource },
         river: { ...unavailableSource },
         elevation: { ...unavailableSource },
       },
@@ -240,6 +259,8 @@ function emptyRiskResult(nowMs: number): RiskResult {
     sourceInformation: {
       aifs: 'unavailable',
       ifs: 'unavailable',
+      gfs: 'unavailable',
+      ukmo: 'unavailable',
       river: 'unavailable',
       elevation: 'unavailable',
       historical: 'not-requested',
@@ -251,6 +272,32 @@ function emptyRiskResult(nowMs: number): RiskResult {
   }
 }
 
+function ineligibleWeather(model: WeatherModelData): WeatherModelData {
+  return {
+    ...model,
+    horizons: model.horizons.map(horizon => ({
+      ...horizon,
+      total: null,
+      complete: false,
+    })),
+  }
+}
+
+function weatherSourceStatus(
+  model: WeatherModelData,
+  freshness: RiskResult['freshness']['sources']['aifs'],
+): SourceStatus {
+  if (
+    isWeatherModelUsable(model)
+    && !freshness.usable
+    && freshness.ageMs !== null
+    && freshness.ageMs > freshness.maxAgeMs
+  ) {
+    return 'expired'
+  }
+  return model.metadata.status
+}
+
 export function calculateRisk(input: RiskEngineInput): RiskResult {
   const nowMs = input.nowMs ?? Date.now()
   const environmental = input.environmental
@@ -258,37 +305,17 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
 
   const historical = input.historicalBaseline
   const freshness = calculateFreshness(environmental, nowMs)
-  const currentAifs = freshness.sources.aifs.usable
-    ? environmental.weatherModels.aifs
-    : {
-        ...environmental.weatherModels.aifs,
-        horizons: environmental.weatherModels.aifs.horizons.map(horizon => ({
-          ...horizon,
-          total: null,
-          complete: false,
-        })),
-      }
-  const currentIfs = freshness.sources.ifs.usable
-    ? environmental.weatherModels.ifs
-    : {
-        ...environmental.weatherModels.ifs,
-        horizons: environmental.weatherModels.ifs.horizons.map(horizon => ({
-          ...horizon,
-          total: null,
-          complete: false,
-        })),
-      }
+  const currentWeatherModels = Object.fromEntries(WEATHER_MODEL_KEYS.map(key => [
+    key,
+    freshness.sources[key].usable
+      ? environmental.weatherModels[key]
+      : ineligibleWeather(environmental.weatherModels[key]),
+  ])) as WeatherModels
   const currentRiverDays = freshness.sources.river.usable
     ? environmental.river.days
     : []
-  const modelAgreement = calculateModelAgreement(
-    currentAifs,
-    currentIfs,
-  )
-  const weatherConsensus = buildWeatherConsensus(
-    currentAifs,
-    currentIfs,
-  )
+  const modelAgreement = calculateModelAgreement(currentWeatherModels)
+  const weatherConsensus = buildWeatherConsensus(currentWeatherModels)
   const rainfallSeverity = calculateRainfallSeverity(weatherConsensus)
   const primaryRiverUsable = isPrimaryRiverUsable(currentRiverDays)
   const riverPercentile = historical?.status === 'available' && primaryRiverUsable
@@ -316,8 +343,10 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
   const calculationStatus = hazardScore === null ? 'INCOMPLETE' : 'COMPLETE'
   const rain24 = weatherConsensus.horizons.find(horizon => horizon.hours === 24)?.value ?? null
   const sourceInformation = {
-    aifs: environmental.weatherModels.aifs.metadata.status,
-    ifs: environmental.weatherModels.ifs.metadata.status,
+    aifs: weatherSourceStatus(environmental.weatherModels.aifs, freshness.sources.aifs),
+    ifs: weatherSourceStatus(environmental.weatherModels.ifs, freshness.sources.ifs),
+    gfs: weatherSourceStatus(environmental.weatherModels.gfs, freshness.sources.gfs),
+    ukmo: weatherSourceStatus(environmental.weatherModels.ukmo, freshness.sources.ukmo),
     river: environmental.river.metadata.status,
     elevation: environmental.terrain.metadata.status,
     historical: historical?.status ?? 'not-requested',
@@ -328,8 +357,7 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     || ensembleConsistency.score === null
     || Object.values(freshness.sources).some(source => !source.usable)
     || [
-      environmental.weatherModels.aifs.metadata,
-      environmental.weatherModels.ifs.metadata,
+      ...WEATHER_MODEL_KEYS.map(key => environmental.weatherModels[key].metadata),
       environmental.river.metadata,
       environmental.terrain.metadata,
     ].some(metadata => metadata.cached || metadata.refreshAttempt !== null)
@@ -374,6 +402,8 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
       agreementScore: modelAgreement.score,
       agreementStatus: modelAgreement.status,
       consensusSource: weatherConsensus.source,
+      usableModelCount: modelAgreement.usableModelCount,
+      totalConfiguredModelCount: modelAgreement.totalConfiguredModelCount,
       ensembleScore: ensembleConsistency.score,
       historicalAvailable: historical?.status === 'available',
       primaryRiverUsable,

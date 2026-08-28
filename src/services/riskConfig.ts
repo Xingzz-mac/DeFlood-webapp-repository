@@ -2,8 +2,8 @@
  * Prototype decision-support heuristics. These thresholds require regional
  * calibration and validation before any operational use.
  */
-export const RISK_ENGINE_VERSION = 'deflood-risk-engine-2c-v1'
-export const RISK_CACHE_SCHEMA_VERSION = 2
+export const RISK_ENGINE_VERSION = 'deflood-risk-engine-2d-v1'
+export const RISK_CACHE_SCHEMA_VERSION = 3
 export const RISK_CACHE_MAX_AGE_MS = 30 * 60 * 1000
 export const RISK_RECALCULATION_INTERVAL_MS = 60 * 1000
 
@@ -89,18 +89,23 @@ export const CONFIDENCE_WEIGHTS = {
 } as const
 
 export const COMPLETENESS_WEIGHTS = {
-  aifs: 0.15,
-  ifs: 0.15,
+  weatherModels: 0.3,
   river: 0.25,
   historical: 0.35,
   elevation: 0.1,
+} as const
+export const FORECAST_MODEL_AVAILABILITY_FACTORS = {
+  0: 0,
+  1: 0.3,
+  2: 0.65,
+  3: 0.9,
+  4: 1,
 } as const
 export const CACHED_SOURCE_COMPLETENESS_FACTOR = 0.75
 export const CACHED_HISTORICAL_COMPLETENESS_FACTOR = 0.9
 
 export const FRESHNESS_WEIGHTS = {
-  aifs: 0.25,
-  ifs: 0.25,
+  weatherModels: 0.5,
   river: 0.35,
   elevation: 0.15,
 } as const

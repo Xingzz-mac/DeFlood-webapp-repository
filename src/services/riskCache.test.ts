@@ -7,6 +7,7 @@ import {
   writeRiskCache,
 } from './riskCache'
 import { calculateRisk } from './riskEngine'
+import { RISK_CACHE_SCHEMA_VERSION } from './riskConfig'
 import type { HistoricalBaseline } from './riskTypes'
 import type { EnvironmentalData, RiverDay, SourceMetadata, WeatherModelData } from './types'
 
@@ -86,6 +87,8 @@ function environmental(options: {
     weatherModels: {
       aifs: weather(rainfall, coordinateFingerprint),
       ifs: weather(rainfall, coordinateFingerprint),
+      gfs: weather(rainfall, coordinateFingerprint),
+      ukmo: weather(rainfall, coordinateFingerprint),
     },
     river: {
       unit: 'm³/s',
@@ -213,6 +216,28 @@ describe('derived risk cache identity', () => {
       storage,
       nowMs + 30 * 60 * 1000 + 1,
     )).toBeNull()
+  })
+
+  it('separates all four weather-model identities and rejects the previous cache schema', () => {
+    const storage = new MemoryStorage()
+    const current = environmental()
+    const historical = history([10, 20, 30, 40, 50])
+    const evidence = buildRiskEvidence(current, historical)
+    const payload = JSON.parse(evidence.evidencePayload) as {
+      weather: Record<string, { model: string }>
+    }
+    const result = calculateRisk({ environmental: current, historicalBaseline: historical, nowMs })
+    storage.setItem(riskCacheKey(evidence), JSON.stringify({
+      schemaVersion: RISK_CACHE_SCHEMA_VERSION - 1,
+      evidence,
+      cachedAt: now,
+      expiresAt: new Date(nowMs + 60_000).toISOString(),
+      result,
+    }))
+
+    expect(Object.keys(payload.weather)).toEqual(['aifs', 'ifs', 'gfs', 'ukmo'])
+    expect(RISK_CACHE_SCHEMA_VERSION).toBe(3)
+    expect(readRiskCache(evidence, storage, nowMs)).toBeNull()
   })
 })
 
