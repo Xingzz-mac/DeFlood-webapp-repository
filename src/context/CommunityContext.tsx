@@ -129,37 +129,60 @@ function migrate(stored: unknown): CommunityData {
 
 interface CommunityContextValue {
   community: CommunityData
+  isSampleData: boolean
   updateCommunity: (data: CommunityData) => void
   setName: (name: string) => void
 }
 
 const CommunityContext = createContext<CommunityContextValue | null>(null)
 const STORAGE_KEY = 'deflood-community-data'
+const CONFIRMED_STORAGE_KEY = 'deflood-community-data-confirmed'
+
+interface CommunityState {
+  community: CommunityData
+  isSampleData: boolean
+}
+
+function initialCommunityState(): CommunityState {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      return {
+        community: migrate(JSON.parse(stored)),
+        isSampleData: localStorage.getItem(CONFIRMED_STORAGE_KEY) !== 'true',
+      }
+    }
+  } catch {
+    // fall through to sample data
+  }
+  return { community: defaultData, isSampleData: true }
+}
 
 export function CommunityProvider({ children }: { children: ReactNode }) {
-  const [community, setCommunity] = useState<CommunityData>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) return migrate(JSON.parse(stored))
-    } catch {
-      // fall through to default
-    }
-    return defaultData
-  })
+  const [state, setState] = useState<CommunityState>(initialCommunityState)
+  const { community, isSampleData } = state
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(community))
+      if (isSampleData) localStorage.removeItem(CONFIRMED_STORAGE_KEY)
+      else localStorage.setItem(CONFIRMED_STORAGE_KEY, 'true')
     } catch {
       // ignore write errors
     }
-  }, [community])
+  }, [community, isSampleData])
 
-  const updateCommunity = (data: CommunityData) => setCommunity(migrate(data))
-  const setName = (name: string) => setCommunity(c => ({ ...c, name }))
+  const updateCommunity = (data: CommunityData) => setState({
+    community: migrate(data),
+    isSampleData: false,
+  })
+  const setName = (name: string) => setState(current => ({
+    ...current,
+    community: { ...current.community, name },
+  }))
 
   return (
-    <CommunityContext.Provider value={{ community, updateCommunity, setName }}>
+    <CommunityContext.Provider value={{ community, isSampleData, updateCommunity, setName }}>
       {children}
     </CommunityContext.Provider>
   )

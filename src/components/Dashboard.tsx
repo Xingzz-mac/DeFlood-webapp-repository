@@ -18,7 +18,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
-  const { community } = useCommunity()
+  const { community, isSampleData } = useCommunity()
   const risk = useRisk()
   const evacuation = useEvacuationPlan()
   const hazardLabel = risk.calculationStatus === 'COMPLETE'
@@ -40,9 +40,15 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
       <div className="mb-5">
         <h1 className="text-xl font-bold text-gray-900 md:text-2xl">{community.name}</h1>
         <p className="mt-1 text-xs text-gray-500">
-          Saved coordinates: {community.latitude.toFixed(4)}, {community.longitude.toFixed(4)} ({community.locationSource})
+          {isSampleData ? 'Sample' : 'Confirmed'} coordinates: {community.latitude.toFixed(4)}, {community.longitude.toFixed(4)} ({community.locationSource})
         </p>
       </div>
+
+      {isSampleData && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Demo community data</strong> — confirm or edit Community Information before use. Planning results use these sample inputs.
+        </div>
+      )}
 
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
@@ -123,9 +129,9 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard
           icon={<IconUsers size={18} />}
-          label="Saved Population"
+          label={isSampleData ? 'Sample Population' : 'Confirmed Population'}
           value={community.population.toLocaleString()}
-          sub="Priority groups are shown separately in the planner"
+          sub={isSampleData ? 'Demo input — confirm in Community Information' : 'User-confirmed prototype input'}
         />
         <StatCard
           icon={<IconTruck size={18} />}
@@ -133,19 +139,19 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
           value={evacuation.shelter.reportedCapacity?.toLocaleString() ?? 'Unknown'}
           sub={evacuation.shelter.coveragePercent === null
             ? 'Coverage cannot be calculated'
-            : `${evacuation.shelter.coveragePercent.toFixed(1)}% reported coverage`}
+            : `${evacuation.shelter.coveragePercent.toFixed(1)}% ${isSampleData ? 'sample-data' : 'reported'} coverage`}
         />
         <StatCard
           icon={<IconUsers size={18} />}
           label="Available Volunteers"
           value={community.volunteers.toLocaleString()}
-          sub="Community-entered resource count"
+          sub={isSampleData ? 'Sample resource count' : 'Community-confirmed resource count'}
         />
         <StatCard
           icon={<IconMap size={18} />}
           label="Available Boats"
           value={community.boats.toLocaleString()}
-          sub="Community-entered resource count"
+          sub={isSampleData ? 'Sample resource count' : 'Community-confirmed resource count'}
         />
       </div>
 

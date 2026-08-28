@@ -35,7 +35,7 @@ export default function EvacuationPlanner({
   onNavigate,
   aiRequester = requestEvacuationAiPlan,
 }: EvacuationPlannerProps) {
-  const { community } = useCommunity()
+  const { community, isSampleData } = useCommunity()
   const risk = useRisk()
   const plan = useEvacuationPlan()
   const [aiState, setAiState] = useState<'idle' | 'loading' | 'success' | 'error' | 'stale'>('idle')
@@ -81,6 +81,12 @@ export default function EvacuationPlanner({
         <strong>Prototype safety boundary:</strong> this planner does not issue mandatory evacuation orders, select routes, set departure times, or assume resource capacities.
       </div>
 
+      {isSampleData && (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900">
+          <strong>Demo community data</strong> — planning results are derived from sample inputs. Confirm or edit Community Information before use.
+        </div>
+      )}
+
       <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
         <SectionTitle icon={<IconAlertTriangle size={18} />} title="Current situation" />
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -112,12 +118,14 @@ export default function EvacuationPlanner({
             <Row label="Reported shelters" value={displayNumber(plan.shelter.shelterCount)} />
             <Row label="Reported capacity" value={displayNumber(plan.shelter.reportedCapacity)} />
             <Row label="Coverage" value={displayPercent(plan.shelter.coveragePercent)} />
-            <Row label="Confirmed shortage" value={plan.shelter.shortageConfirmed ? `${displayNumber(plan.shelter.shortage)} places` : plan.shelter.shortage === null ? 'Unknown' : 'None'} />
+            <Row label={isSampleData ? 'Sample-data shortage' : 'Confirmed shortage'} value={plan.shelter.shortageConfirmed ? `${displayNumber(plan.shelter.shortage)} places` : plan.shelter.shortage === null ? 'Unknown' : 'None'} />
             <Row label="Operational status" value="Unknown — verify locally" />
           </div>
           {plan.shelter.shortageConfirmed && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="text-xs font-bold uppercase tracking-wide text-amber-800">Confirmed shelter shortfall</div>
+              <div className="text-xs font-bold uppercase tracking-wide text-amber-800">
+                {isSampleData ? 'Sample-data shelter shortfall' : 'Confirmed shelter shortfall'}
+              </div>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <Metric label="Population" value={displayNumber(plan.shelter.population)} />
                 <Metric label="Reported capacity" value={displayNumber(plan.shelter.reportedCapacity)} />
@@ -125,7 +133,7 @@ export default function EvacuationPlanner({
                 <Metric label="Shortfall" value={`${displayNumber(plan.shelter.shortage)} places`} />
               </div>
               <p className="mt-3 text-sm leading-relaxed text-amber-950">
-                Reported shelter capacity covers {displayNumber(plan.shelter.reportedCapacity)} of {displayNumber(plan.shelter.population)} residents ({displayPercent(plan.shelter.coveragePercent)}), leaving a confirmed shortfall of {displayNumber(plan.shelter.shortage)} places.
+                Reported shelter capacity covers {displayNumber(plan.shelter.reportedCapacity)} of {displayNumber(plan.shelter.population)} residents ({displayPercent(plan.shelter.coveragePercent)}), leaving {isSampleData ? 'a sample-data' : 'a confirmed'} shortfall of {displayNumber(plan.shelter.shortage)} places.
               </p>
             </div>
           )}
@@ -151,7 +159,7 @@ export default function EvacuationPlanner({
             <li key={group.id}><strong>{group.label}:</strong> {group.count.toLocaleString()}</li>
           ))}
         </ListSection>
-        <ListSection title="Resource warnings" empty="No confirmed resource warnings from supplied data.">
+        <ListSection title="Resource warnings" empty={isSampleData ? 'No resource warnings are derived from the sample data.' : 'No confirmed resource warnings from supplied data.'}>
           {plan.resourceWarnings.map(warning => <li key={warning}>{warning}</li>)}
         </ListSection>
         <ListSection title="Missing information" empty="No planning information is missing.">
@@ -161,7 +169,9 @@ export default function EvacuationPlanner({
 
       <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-5">
         <h2 className="font-semibold text-gray-900">Immediate planning priorities</h2>
-        <p className="mt-1 text-xs text-gray-600">Deterministically ranked for the current planning status and confirmed community facts. These are planning priorities, not official evacuation orders.</p>
+        <p className="mt-1 text-xs text-gray-600">
+          Deterministically ranked for the current planning status and {isSampleData ? 'sample community inputs' : 'confirmed community facts'}. These are planning priorities, not official evacuation orders.
+        </p>
         <ol className="mt-4 space-y-2">
           {plan.immediatePriorities.map((action, index) => (
             <li key={action.id} className="flex gap-3 rounded-xl border border-blue-100 bg-white px-4 py-3">
@@ -235,7 +245,7 @@ export default function EvacuationPlanner({
             onClick={() => onNavigate('support')}
             className="ml-0 mt-3 block text-sm font-semibold text-blue-700 hover:underline sm:ml-3 sm:inline"
           >
-            View confirmed gaps in Support Network
+            View {isSampleData ? 'sample-data' : 'confirmed'} gaps in Support Network
           </button>
         )}
       </section>

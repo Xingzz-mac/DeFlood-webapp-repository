@@ -35,28 +35,34 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
-          <h2 className="font-semibold text-gray-900 mb-4 text-sm">Notifications</h2>
+          <h2 className="font-semibold text-gray-900 text-sm">Notifications</h2>
+          <p className="mb-4 mt-1 text-xs text-gray-500">Future prototype feature — not currently active.</p>
           <div className="space-y-3">
             {[
-              'Risk level changes',
-              'New assistance requests',
-              'Weather and flood alerts',
-              'Evacuation orders',
-              'Response status updates',
+              'Risk-level change notifications',
+              'Assistance-request notifications',
+              'Weather and flood alert notifications',
+              'Response-status notifications',
             ].map(item => (
-              <label key={item} className="flex items-center justify-between cursor-pointer gap-4">
+              <label key={item} className="flex cursor-not-allowed items-center justify-between gap-4 opacity-60">
                 <span className="text-sm text-gray-700">{item}</span>
-                <input type="checkbox" defaultChecked className="accent-blue-600 w-4 h-4" />
+                <input
+                  type="checkbox"
+                  disabled
+                  aria-label={item}
+                  className="h-4 w-4 accent-blue-600"
+                />
               </label>
             ))}
           </div>
+          <p className="mt-4 text-xs text-gray-500">DeFlood does not issue official evacuation orders.</p>
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <h2 className="font-semibold text-gray-900 mb-3 text-sm">Data Sources</h2>
           <p className="text-sm text-gray-500 leading-relaxed mb-4">
-            Environmental source data is requested for the saved community coordinates.
-            No flood-risk calculation has been implemented yet.
+            Environmental source data is requested for the current community coordinates.
+            Flood Hazard and Data Confidence are calculated using the current DeFlood prototype risk engine. Thresholds are experimental and not operationally validated.
           </p>
           <div className="space-y-1 text-xs text-gray-400">
             <div>Weather forecasts: Open-Meteo ECMWF AIFS and IFS</div>

@@ -11,7 +11,7 @@ interface CommunityInfoProps {
 }
 
 export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
-  const { community, updateCommunity } = useCommunity()
+  const { community, isSampleData, updateCommunity } = useCommunity()
   const [saved, setSaved] = useState(false)
   const [info, setInfo] = useState<CommunityData>(community)
   const [coordinates, setCoordinates] = useState({
@@ -150,6 +150,12 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Community Information</h1>
         <p className="text-gray-500 text-sm mt-0.5">Update community details used for source-data requests and planning prototypes</p>
       </div>
+
+      {isSampleData && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Demo community data</strong> — confirm or edit before use.
+        </div>
+      )}
 
       <form onSubmit={handleSave} className="space-y-4">
         <Section title="Community Details" icon={<IconBuilding size={17} />}>

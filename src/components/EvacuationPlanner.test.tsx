@@ -59,19 +59,27 @@ function riskValue(scenario: keyof typeof DEMO_RISK_FIXTURES): RiskContextValue 
   }
 }
 
-function setPlanningContext(currentCommunity: CommunityData, risk: RiskContextValue) {
+function setPlanningContext(
+  currentCommunity: CommunityData,
+  risk: RiskContextValue,
+  isSampleData = false,
+) {
   const plan = calculateEvacuationPlan(currentCommunity, risk)
-  useCommunityMock.mockReturnValue({ community: currentCommunity })
+  useCommunityMock.mockReturnValue({ community: currentCommunity, isSampleData })
   useRiskMock.mockReturnValue(risk)
   useEvacuationPlanMock.mockReturnValue(plan)
   return plan
 }
 
 function pageText(node: ReactTestRendererJSON | ReactTestRendererJSON[] | string | null): string {
-  if (node === null) return ''
-  if (typeof node === 'string') return node
-  if (Array.isArray(node)) return node.map(pageText).join(' ')
-  return (node.children ?? []).map(child => typeof child === 'string' ? child : pageText(child)).join(' ')
+  const text = node === null
+    ? ''
+    : typeof node === 'string'
+      ? node
+      : Array.isArray(node)
+        ? node.map(pageText).join(' ')
+        : (node.children ?? []).map(child => typeof child === 'string' ? child : pageText(child)).join(' ')
+  return text.replace(/\s+/g, ' ').trim()
 }
 
 function deferred<T>() {
@@ -162,6 +170,37 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
     expect(text).toContain(result.summary)
     expect(text).toContain(trustedAction.text)
     expect(text).not.toContain('Planning data changed while DeFlood AI was responding.')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('qualifies sample-data planning gaps and leaves Stage 3 numbers unchanged after confirmation', async () => {
+    const currentCommunity = community()
+    const risk = riskValue('demo-high')
+    const samplePlan = setPlanningContext(currentCommunity, risk, true)
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(<EvacuationPlanner onNavigate={vi.fn()} />)
+    })
+
+    const sampleText = pageText(renderer!.toJSON())
+    expect(sampleText).toContain('Demo community data — planning results are derived from sample inputs.')
+    expect(sampleText).toContain('Sample-data shortage')
+    expect(sampleText).toContain('Sample-data shelter shortfall')
+    expect(sampleText).not.toContain('Confirmed shelter shortfall')
+
+    const confirmedPlan = setPlanningContext(currentCommunity, risk, false)
+    await act(async () => {
+      renderer?.update(<EvacuationPlanner onNavigate={vi.fn()} />)
+    })
+
+    const confirmedText = pageText(renderer!.toJSON())
+    expect(confirmedText).toContain('Confirmed shortage')
+    expect(confirmedText).toContain('Confirmed shelter shortfall')
+    expect(confirmedText).not.toContain('Demo community data')
+    expect(confirmedPlan.shelter).toEqual(samplePlan.shelter)
+    expect(confirmedPlan.transport).toEqual(samplePlan.transport)
+    expect(confirmedPlan.priorityGroups).toEqual(samplePlan.priorityGroups)
+    expect(confirmedPlan.immediatePriorities).toEqual(samplePlan.immediatePriorities)
     await act(async () => renderer?.unmount())
   })
 })
