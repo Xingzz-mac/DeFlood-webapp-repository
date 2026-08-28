@@ -2,7 +2,7 @@ export const ECMWF_BASE = 'https://api.open-meteo.com/v1/ecmwf'
 export const FLOOD_BASE = 'https://flood-api.open-meteo.com/v1/flood'
 export const ELEVATION_BASE = 'https://api.open-meteo.com/v1/elevation'
 
-export const AIFS_MODEL = 'ecmwf_aifs025'
+export const AIFS_MODEL = 'ecmwf_aifs025_single'
 export const IFS_MODEL = 'ecmwf_ifs025'
 
 export const FORECAST_HOURS = 96
