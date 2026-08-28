@@ -13,3 +13,4 @@ logs/
 .claude-replay.*
 .tmp-*
 .env
+.DS_Store
