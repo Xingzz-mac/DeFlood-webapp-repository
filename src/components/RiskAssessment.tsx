@@ -3,6 +3,7 @@ import type { Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
 import { riskMeaning, riskNextStep } from '../services/riskPresentation'
+import { calculateFreshness } from '../services/riskScoring'
 import type {
   RiverData,
   SourceMetadata,
@@ -17,6 +18,7 @@ import {
   IconRefresh,
   IconWaves,
 } from './Icons'
+import RiverDischargeChart from './RiverDischargeChart'
 
 interface RiskAssessmentProps {
   onNavigate: (section: Section) => void
@@ -212,6 +214,11 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
   const { community } = useCommunity()
   const risk = useRisk()
   const data = risk.environmentalData
+  const riverFreshness = data ? calculateFreshness(data).sources.river : null
+  const riverExpired = riverFreshness !== null
+    && riverFreshness.ageMs !== null
+    && riverFreshness.ageMs > riverFreshness.maxAgeMs
+  const demoRiverUnavailable = risk.engineVersion === 'deflood-dev-scenario-v1'
   const statusLabel = risk.calculationStatus === 'COMPLETE'
     ? `${risk.hazardLevel} Flood Hazard`
     : risk.calculationStatus === 'INCOMPLETE'
@@ -318,6 +325,16 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
           </div>
         </div>
       </div>
+
+      <RiverDischargeChart
+        river={data?.river ?? null}
+        historicalBaseline={risk.historicalBaseline ?? null}
+        riverPercentile={risk.riverPercentile ?? null}
+        trendLabel={risk.riverTrend?.label ?? null}
+        loading={risk.loading}
+        expired={riverExpired}
+        demoUnavailable={demoRiverUnavailable}
+      />
 
       <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
         <h2 className="font-semibold text-gray-900">Why this result</h2>

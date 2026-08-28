@@ -7,6 +7,7 @@ export const IFS_MODEL = 'ecmwf_ifs025'
 
 export const FORECAST_HOURS = 96
 export const RIVER_FORECAST_DAYS = 7
+export const RIVER_PAST_DAYS = 7
 
 export const MIN_COVERAGE_PCT = 90
 export const REQUIRED_WEATHER_HORIZONS = [24, 72] as const

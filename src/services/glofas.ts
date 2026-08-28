@@ -6,7 +6,7 @@ import type {
   RiverEnsembleAvailability,
   EnsembleFieldAvailability,
 } from './types'
-import { FLOOD_BASE, RIVER_FORECAST_DAYS } from './config'
+import { FLOOD_BASE, RIVER_FORECAST_DAYS, RIVER_PAST_DAYS } from './config'
 import { coordFingerprint } from './cache'
 
 const DAILY_VARS = [
@@ -70,6 +70,26 @@ export function buildRiverDays(daily: FloodDaily | undefined): RiverDay[] {
     p25: finiteValue(daily?.river_discharge_p25, index),
     p75: finiteValue(daily?.river_discharge_p75, index),
   }))
+}
+
+export function buildRiverSeries(
+  daily: FloodDaily | undefined,
+  pastDays = RIVER_PAST_DAYS,
+): { recentDays: RiverDay[]; forecastDays: RiverDay[] } {
+  const dates = daily?.time ?? []
+  const allDays = dates.slice(0, pastDays + RIVER_FORECAST_DAYS).map((date, index) => ({
+    date,
+    discharge: finiteValue(daily?.river_discharge, index),
+    mean: finiteValue(daily?.river_discharge_mean, index),
+    median: finiteValue(daily?.river_discharge_median, index),
+    maximum: finiteValue(daily?.river_discharge_max, index),
+    p25: finiteValue(daily?.river_discharge_p25, index),
+    p75: finiteValue(daily?.river_discharge_p75, index),
+  }))
+  return {
+    recentDays: allDays.slice(0, pastDays),
+    forecastDays: allDays.slice(pastDays, pastDays + RIVER_FORECAST_DAYS),
+  }
 }
 
 export const PRIMARY_RIVER_REQUIRED_VALID_DAYS = 2
@@ -145,6 +165,7 @@ export async function fetchRiverDischarge(
     latitude: String(latitude),
     longitude: String(longitude),
     daily: DAILY_VARS,
+    past_days: String(RIVER_PAST_DAYS),
     forecast_days: String(RIVER_FORECAST_DAYS),
     timezone: 'auto',
   })
@@ -153,7 +174,7 @@ export async function fetchRiverDischarge(
   const data: FloodResponse = await response.json()
   if (data.error) throw new Error(data.reason ?? 'Flood API error')
 
-  const days = buildRiverDays(data.daily)
+  const { recentDays, forecastDays: days } = buildRiverSeries(data.daily)
   const validPrimaryDays = primaryRiverValidDays(days)
   const primaryUsable = isPrimaryRiverUsable(days)
   const status: SourceMetadata['status'] = primaryUsable
@@ -170,6 +191,7 @@ export async function fetchRiverDischarge(
 
   return {
     unit: 'm³/s',
+    recentDays,
     days,
     primaryValidDays: validPrimaryDays,
     primaryUsable,

@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildEnsembleAvailability,
   buildRiverDays,
+  buildRiverSeries,
+  computeThreeDayPeak,
   computeNearTermTrend,
+  fetchRiverDischarge,
   isPrimaryRiverUsable,
 } from './glofas'
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('GloFAS primary and ensemble usability', () => {
   it('does not treat ensemble-only data as a usable primary river forecast', () => {
@@ -76,5 +81,57 @@ describe('GloFAS primary and ensemble usability', () => {
       expect.objectContaining({ date: '2026-08-20', discharge: 11, mean: null, p25: 6, p75: 26 }),
       expect.objectContaining({ date: '2026-08-21', discharge: 12, mean: 22, p25: null, p75: 27 }),
     ])
+  })
+
+  it('separates seven recent modeled days from risk-facing forecast days without shifting Stage 2 inputs', () => {
+    const recentDates = Array.from({ length: 7 }, (_, index) => `2026-08-${String(index + 1).padStart(2, '0')}`)
+    const forecastDates = Array.from({ length: 7 }, (_, index) => `2026-08-${String(index + 8).padStart(2, '0')}`)
+    const forecastDischarge = [40, 50, 45, 43, 42, 41, 39]
+    const combined = buildRiverSeries({
+      time: [...recentDates, ...forecastDates],
+      river_discharge: [30, null, 32, 34, 35, 37, 38, ...forecastDischarge],
+      river_discharge_p25: [1, 2, 3, 4, 5, 6, 7, 35, 44, 40, 38, 37, 36, 34],
+      river_discharge_p75: [11, 12, 13, 14, 15, 16, 17, 45, 56, 50, 48, 47, 46, 44],
+    })
+    const originalForecast = buildRiverDays({
+      time: forecastDates,
+      river_discharge: forecastDischarge,
+      river_discharge_p25: [35, 44, 40, 38, 37, 36, 34],
+      river_discharge_p75: [45, 56, 50, 48, 47, 46, 44],
+    })
+
+    expect(combined.recentDays).toHaveLength(7)
+    expect(combined.recentDays[1].discharge).toBeNull()
+    expect(combined.forecastDays).toEqual(originalForecast)
+    expect(combined.forecastDays[0]).toMatchObject({
+      date: '2026-08-08',
+      discharge: 40,
+      p25: 35,
+      p75: 45,
+    })
+    expect(isPrimaryRiverUsable(combined.forecastDays)).toBe(isPrimaryRiverUsable(originalForecast))
+    expect(computeThreeDayPeak(combined.forecastDays)).toEqual(computeThreeDayPeak(originalForecast))
+    expect(computeNearTermTrend(combined.forecastDays)).toBe(computeNearTermTrend(originalForecast))
+  })
+
+  it('requests past_days once and keeps the existing seven-day forecast contract', async () => {
+    const dates = Array.from({ length: 14 }, (_, index) => `2026-08-${String(index + 1).padStart(2, '0')}`)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      daily: {
+        time: dates,
+        river_discharge: Array.from({ length: 14 }, (_, index) => index + 1),
+      },
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchRiverDischarge(16.5, 95)
+    const requestUrl = new URL(fetchMock.mock.calls[0][0])
+
+    expect(requestUrl.searchParams.get('past_days')).toBe('7')
+    expect(requestUrl.searchParams.get('forecast_days')).toBe('7')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.recentDays?.map(day => day.date)).toEqual(dates.slice(0, 7))
+    expect(result.days.map(day => day.date)).toEqual(dates.slice(7, 14))
+    expect(result.peakDate).toBe('2026-08-10')
   })
 })

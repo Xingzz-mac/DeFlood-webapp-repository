@@ -70,6 +70,7 @@ export interface RiverEnsembleAvailability {
 
 export interface RiverData {
   unit: 'm³/s'
+  recentDays?: RiverDay[]
   days: RiverDay[]
   primaryValidDays: number
   primaryUsable: boolean

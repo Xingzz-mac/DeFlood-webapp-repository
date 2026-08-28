@@ -131,7 +131,18 @@ function forecastResponse(): Response {
 }
 
 function riverResponse(): Response {
-  const days = riverDays()
+  const forecastDays = riverDays()
+  const recentDays = Array.from({ length: 7 }, (_, index) => ({
+    ...forecastDays[0],
+    date: `2026-08-${String(index + 12).padStart(2, '0')}`,
+    discharge: 60 + index,
+    mean: 60 + index,
+    median: 60 + index,
+    maximum: 70 + index,
+    p25: 55 + index,
+    p75: 65 + index,
+  }))
+  const days = [...recentDays, ...forecastDays]
   return new Response(JSON.stringify({
     daily: {
       time: days.map(day => day.date),

@@ -377,6 +377,30 @@ describe('deterministic Flood Hazard', () => {
     expect(result.riverPercentile).not.toBeNull()
   })
 
+  it('ignores presentation-only recent river days in Stage 2 historical abnormality and hazard outputs', () => {
+    const current = environmental({ discharge: [80, 90, 100] })
+    const baseline = history(Array.from({ length: 100 }, (_, index) => index + 1))
+    const forecastOnly = calculateRisk({
+      environmental: current,
+      historicalBaseline: baseline,
+      nowMs: Date.parse(now),
+    })
+    current.river.recentDays = riverDays([10_000, 20_000, 30_000])
+      .map((day, index) => ({ ...day, date: `2026-08-${String(index + 16).padStart(2, '0')}` }))
+
+    const withRecentPresentationData = calculateRisk({
+      environmental: current,
+      historicalBaseline: baseline,
+      nowMs: Date.parse(now),
+    })
+
+    expect(withRecentPresentationData.riverPercentile).toBe(forecastOnly.riverPercentile)
+    expect(withRecentPresentationData.riverAbnormality).toBe(forecastOnly.riverAbnormality)
+    expect(withRecentPresentationData.riverTrend).toEqual(forecastOnly.riverTrend)
+    expect(withRecentPresentationData.hazardScore).toBe(forecastOnly.hazardScore)
+    expect(withRecentPresentationData.hazardLevel).toBe(forecastOnly.hazardLevel)
+  })
+
   it('returns INCOMPLETE with only one valid primary river day', () => {
     const result = calculateRisk({
       environmental: environmental({ discharge: [80, null, null] }),
