@@ -18,7 +18,10 @@ import {
   roundScore,
 } from './riskScoring'
 import type {
+  ConfidenceBreakdownItem,
+  ConfidenceComponents,
   FloodHazardLevel,
+  HazardBreakdownItem,
   HazardComponents,
   ModelAgreementStatus,
   RiskEngineInput,
@@ -38,14 +41,28 @@ export function classifyHazard(score: number): FloodHazardLevel {
   return 'HIGH'
 }
 
-function calculateHazardComponents(
-  rainfall: number | null,
-  riverAbnormality: number | null,
-  riverTrend: number | null,
-  elevation: number | null,
-): { components: HazardComponents; hazardScore: number | null } {
-  const scores = { rainfall, riverAbnormality, riverTrend, elevation }
-  const coreAvailable = rainfall !== null && riverAbnormality !== null
+const HAZARD_LABELS: Record<keyof HazardComponents, string> = {
+  rainfall: 'Rainfall severity',
+  riverAbnormality: 'Historical river abnormality',
+  riverTrend: 'River trend',
+  elevation: 'Elevation context',
+}
+
+const CONFIDENCE_LABELS: Record<keyof ConfidenceComponents, string> = {
+  completeness: 'Data completeness',
+  modelAgreement: 'Multi-model agreement',
+  ensembleConsistency: 'River ensemble consistency',
+  freshness: 'Data freshness',
+}
+
+export function calculateHazardBreakdown(
+  scores: Record<keyof HazardComponents, number | null>,
+): {
+  components: HazardComponents
+  hazardBreakdown: HazardBreakdownItem[]
+  hazardScore: number | null
+} {
+  const coreAvailable = scores.rainfall !== null && scores.riverAbnormality !== null
   const availableWeight = coreAvailable
     ? (Object.keys(scores) as (keyof typeof scores)[]).reduce(
         (sum, key) => sum + (scores[key] === null ? 0 : HAZARD_WEIGHTS[key]),
@@ -61,13 +78,42 @@ function calculateHazardComponents(
       result[key] = { score, baseWeight: HAZARD_WEIGHTS[key], effectiveWeight }
       return result
     }, {} as HazardComponents)
+  const hazardBreakdown = (Object.keys(components) as (keyof HazardComponents)[]).map(id => {
+    const component = components[id]
+    return {
+      id,
+      label: HAZARD_LABELS[id],
+      score: component.score,
+      effectiveWeight: component.effectiveWeight,
+      contribution: component.score === null ? 0 : component.score * component.effectiveWeight,
+      available: component.score !== null,
+    }
+  })
   const hazardScore = coreAvailable
-    ? roundScore((Object.keys(components) as (keyof HazardComponents)[]).reduce(
-        (sum, key) => sum + (components[key].score ?? 0) * components[key].effectiveWeight,
-        0,
-      ))
+    ? roundScore(hazardBreakdown.reduce((sum, item) => sum + item.contribution, 0))
     : null
-  return { components, hazardScore }
+  return { components, hazardBreakdown, hazardScore }
+}
+
+export function calculateConfidenceBreakdown(
+  scores: Record<keyof ConfidenceComponents, number | null>,
+): { confidenceBreakdown: ConfidenceBreakdownItem[]; confidenceScore: number } {
+  const confidenceBreakdown = (Object.keys(CONFIDENCE_WEIGHTS) as (keyof ConfidenceComponents)[])
+    .map(id => ({
+      id,
+      label: CONFIDENCE_LABELS[id],
+      score: scores[id],
+      weight: CONFIDENCE_WEIGHTS[id],
+      contribution: (scores[id] ?? 0) * CONFIDENCE_WEIGHTS[id],
+      available: scores[id] !== null,
+    }))
+  return {
+    confidenceBreakdown,
+    confidenceScore: roundScore(confidenceBreakdown.reduce(
+      (sum, item) => sum + item.contribution,
+      0,
+    )),
+  }
 }
 
 function latestSuccessfulUpdate(
@@ -198,6 +244,18 @@ function emptyRiskResult(nowMs: number): RiskResult {
     usable: false,
     cached: false,
   }
+  const { components, hazardBreakdown } = calculateHazardBreakdown({
+    rainfall: null,
+    riverAbnormality: null,
+    riverTrend: null,
+    elevation: null,
+  })
+  const { confidenceBreakdown } = calculateConfidenceBreakdown({
+    completeness: null,
+    modelAgreement: null,
+    ensembleConsistency: null,
+    freshness: null,
+  })
   return {
     engineVersion: RISK_ENGINE_VERSION,
     calculatedAt: new Date(nowMs).toISOString(),
@@ -205,14 +263,11 @@ function emptyRiskResult(nowMs: number): RiskResult {
     hazardScore: null,
     hazardLevel: null,
     confidenceScore: 0,
-    components: {
-      rainfall: { score: null, baseWeight: HAZARD_WEIGHTS.rainfall, effectiveWeight: 0 },
-      riverAbnormality: { score: null, baseWeight: HAZARD_WEIGHTS.riverAbnormality, effectiveWeight: 0 },
-      riverTrend: { score: null, baseWeight: HAZARD_WEIGHTS.riverTrend, effectiveWeight: 0 },
-      elevation: { score: null, baseWeight: HAZARD_WEIGHTS.elevation, effectiveWeight: 0 },
-    },
+    components,
     effectiveWeights: { rainfall: 0, riverAbnormality: 0, riverTrend: 0, elevation: 0 },
+    hazardBreakdown,
     confidenceComponents: { completeness: 0, modelAgreement: null, ensembleConsistency: null, freshness: 0 },
+    confidenceBreakdown,
     modelAgreement: {
       status: 'NO_USABLE_MODELS',
       score: null,
@@ -327,19 +382,20 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     freshness.sources.elevation.usable ? environmental.terrain.elevation : null,
   )
   const ensembleConsistency = calculateEnsembleConsistency(environmental.river.days)
-  const { components, hazardScore } = calculateHazardComponents(
-    rainfallSeverity,
+  const { components, hazardBreakdown, hazardScore } = calculateHazardBreakdown({
+    rainfall: rainfallSeverity,
     riverAbnormality,
-    riverTrend.score,
+    riverTrend: riverTrend.score,
     elevation,
-  )
+  })
   const completeness = calculateCompleteness(environmental, historical)
-  const confidenceScore = roundScore(
-    completeness * CONFIDENCE_WEIGHTS.completeness
-    + (modelAgreement.score ?? 0) * CONFIDENCE_WEIGHTS.modelAgreement
-    + (ensembleConsistency.score ?? 0) * CONFIDENCE_WEIGHTS.ensembleConsistency
-    + freshness.score * CONFIDENCE_WEIGHTS.freshness,
-  )
+  const confidenceComponents = {
+    completeness,
+    modelAgreement: modelAgreement.score,
+    ensembleConsistency: ensembleConsistency.score,
+    freshness: freshness.score,
+  }
+  const { confidenceBreakdown, confidenceScore } = calculateConfidenceBreakdown(confidenceComponents)
   const calculationStatus = hazardScore === null ? 'INCOMPLETE' : 'COMPLETE'
   const rain24 = weatherConsensus.horizons.find(horizon => horizon.hours === 24)?.value ?? null
   const sourceInformation = {
@@ -376,12 +432,9 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
       riverTrend: components.riverTrend.effectiveWeight,
       elevation: components.elevation.effectiveWeight,
     },
-    confidenceComponents: {
-      completeness,
-      modelAgreement: modelAgreement.score,
-      ensembleConsistency: ensembleConsistency.score,
-      freshness: freshness.score,
-    },
+    hazardBreakdown,
+    confidenceComponents,
+    confidenceBreakdown,
     modelAgreement,
     weatherConsensus,
     rainfallSeverity,

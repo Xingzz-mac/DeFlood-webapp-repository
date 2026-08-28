@@ -5,12 +5,19 @@ import { useRisk } from '../context/RiskContext'
 import { riskMeaning, riskNextStep } from '../services/riskPresentation'
 import { calculateFreshness } from '../services/riskScoring'
 import type {
+  ConfidenceBreakdownItem,
+  HazardBreakdownItem,
+  RiskResult,
+} from '../services/riskTypes'
+import type {
+  EnvironmentalData,
   RiverData,
   SourceMetadata,
   SourceStatus,
   TerrainData,
   WeatherModelData,
 } from '../services/types'
+import { WEATHER_MODEL_DEFINITIONS, WEATHER_MODEL_KEYS } from '../services/weatherModels'
 import {
   IconAlertTriangle,
   IconDroplets,
@@ -213,6 +220,187 @@ function ScoreValue({ value }: { value: number | null }) {
   )
 }
 
+interface ExplanationItem {
+  id: string
+  label: string
+  score: number | null
+  weight: number
+  contribution: number
+  available: boolean
+}
+
+function ScoreExplanationPanel({
+  title,
+  finalLabel,
+  finalScore,
+  items,
+  weightLabel,
+}: {
+  title: string
+  finalLabel: string
+  finalScore: number
+  items: ExplanationItem[]
+  weightLabel: string
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h3 className="font-semibold text-gray-900">{title}</h3>
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 font-mono text-xs font-bold text-blue-800">
+          {finalScore.toFixed(1)} / 100
+        </span>
+      </div>
+      <div className="mt-4 space-y-3">
+        {items.map(item => (
+          <div key={item.id} className="rounded-xl bg-gray-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-gray-800">{item.label}</div>
+              {!item.available && (
+                <span className="text-xs font-medium text-gray-500">Unavailable</span>
+              )}
+            </div>
+            {item.available ? (
+              <>
+                <div className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-3 sm:gap-3">
+                  <span>Score: <strong className="font-mono text-gray-900">{item.score?.toFixed(1)} / 100</strong></span>
+                  <span>{weightLabel}: <strong className="font-mono text-gray-900">{(item.weight * 100).toFixed(1)}%</strong></span>
+                  <span>Contribution: <strong className="font-mono text-gray-900">{item.contribution.toFixed(1)} points</strong></span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200" aria-hidden="true">
+                  <div
+                    className="h-full rounded-full bg-blue-600"
+                    style={{ width: `${Math.max(0, Math.min(100, item.score ?? 0))}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="mt-1 text-xs text-gray-500">
+                Score unavailable · {weightLabel}: {(item.weight * 100).toFixed(1)}% · Contribution: 0.0 points
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 border-t border-gray-100 pt-3 text-xs text-gray-600">
+        {finalLabel}: <strong className="font-mono text-gray-900">{finalScore.toFixed(1)} points</strong>
+      </p>
+    </div>
+  )
+}
+
+function FourModelSummary({
+  risk,
+  data,
+}: {
+  risk: RiskResult
+  data: EnvironmentalData | null
+}) {
+  const horizon = risk.weatherConsensus.horizons.find(candidate => candidate.hours === 72)
+  const demoScenario = risk.engineVersion === 'deflood-dev-scenario-v1'
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 md:col-span-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-gray-900">Four-model rainfall outlook</h3>
+          <p className="mt-1 text-xs text-gray-500">Usable 72-hour totals from the current deterministic forecast evidence.</p>
+        </div>
+        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+          Usable models: {risk.weatherConsensus.usableModelCount} / {risk.weatherConsensus.totalConfiguredModelCount}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {WEATHER_MODEL_KEYS.map(key => {
+          const model = data?.weatherModels[key]
+          const usable = !demoScenario && Boolean(horizon?.modelKeys.includes(key))
+          const total = usable
+            ? model?.horizons.find(candidate => candidate.hours === 72)?.total ?? null
+            : null
+          return (
+            <div key={key} className="rounded-xl bg-gray-50 p-3">
+              <div className="text-xs font-semibold text-gray-700">
+                {model?.label ?? WEATHER_MODEL_DEFINITIONS[key].label}
+              </div>
+              <div className="mt-2 font-mono text-base font-bold text-gray-900">
+                {total === null ? 'Unavailable' : `${total.toFixed(1)} mm`}
+              </div>
+              <div className="mt-1 text-xs capitalize text-gray-500">
+                {demoScenario ? 'Model detail not included in demo fixture' : risk.sourceInformation[key]}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-4 grid gap-2 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm sm:grid-cols-3">
+        <span>72h consensus: <strong className="font-mono">{horizon?.value === null || horizon?.value === undefined ? 'Unavailable' : `${horizon.value.toFixed(1)} mm`}</strong></span>
+        <span>Agreement: <strong>{risk.modelAgreement.label}</strong></span>
+        <span>Agreement score: <strong className="font-mono">{risk.modelAgreement.score?.toFixed(1) ?? 'Unavailable'}</strong></span>
+      </div>
+      <p className="mt-3 text-xs text-gray-500">Consensus is modeled rainfall, not probability. Agreement affects Data Confidence only.</p>
+    </div>
+  )
+}
+
+function DeterministicScoreExplanation({
+  risk,
+  data,
+}: {
+  risk: RiskResult
+  data: EnvironmentalData | null
+}) {
+  const hazardItems: ExplanationItem[] = risk.hazardBreakdown.map((item: HazardBreakdownItem) => ({
+    ...item,
+    weight: item.effectiveWeight,
+  }))
+  const confidenceItems: ExplanationItem[] = risk.confidenceBreakdown.map((item: ConfidenceBreakdownItem) => ({
+    ...item,
+    weight: item.weight,
+  }))
+  return (
+    <section className="mb-5" aria-labelledby="deterministic-score-explanation">
+      <div className="mb-3">
+        <h2 id="deterministic-score-explanation" className="font-semibold text-gray-900">Deterministic score explanation</h2>
+        <p className="mt-1 text-xs text-gray-500">Calculated deterministically from verified DeFlood inputs — not generated by AI.</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {risk.calculationStatus === 'COMPLETE' && risk.hazardScore !== null ? (
+          <ScoreExplanationPanel
+            title="Why this Flood Hazard score?"
+            finalLabel="Final Flood Hazard score"
+            finalScore={risk.hazardScore}
+            items={hazardItems}
+            weightLabel="Effective weight"
+          />
+        ) : (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h3 className="font-semibold text-gray-900">Why this Flood Hazard score?</h3>
+            <p className="mt-2 text-sm text-amber-900">
+              A numeric breakdown is unavailable because required deterministic hazard evidence is incomplete.
+            </p>
+            <ul className="mt-3 space-y-2 text-xs text-amber-800">
+              {risk.contributingFactors.slice(0, 3).map(factor => <li key={factor}>• {factor}</li>)}
+            </ul>
+          </div>
+        )}
+        {risk.calculationStatus === 'NOT_CALCULATED' ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-5">
+            <h3 className="font-semibold text-gray-900">Why this Data Confidence score?</h3>
+            <p className="mt-2 text-sm text-gray-600">Data Confidence is unavailable until environmental evidence is loaded.</p>
+          </div>
+        ) : (
+          <ScoreExplanationPanel
+            title="Why this Data Confidence score?"
+            finalLabel="Final Data Confidence score"
+            finalScore={risk.confidenceScore}
+            items={confidenceItems}
+            weightLabel="Configured weight"
+          />
+        )}
+        <FourModelSummary risk={risk} data={data} />
+      </div>
+    </section>
+  )
+}
+
 export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
   const { community } = useCommunity()
   const risk = useRisk()
@@ -351,6 +539,8 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
         </ul>
       </div>
 
+      <DeterministicScoreExplanation risk={risk} data={data} />
+
       <details className="rounded-2xl border border-gray-200 bg-white">
         <summary className="cursor-pointer list-none rounded-2xl px-5 py-4 text-sm font-semibold text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
           View supporting data
@@ -434,21 +624,6 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
             <p className="mt-3 text-xs text-gray-500">The percentile describes historical same-season discharge unusualness, not flood probability.</p>
           </div>
           <TerrainCard terrain={data.terrain} />
-          <details className="rounded-2xl border border-gray-200 bg-white">
-            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-              How the risk score was calculated
-            </summary>
-            <div className="grid gap-2 border-t border-gray-100 p-5 text-sm text-gray-600 sm:grid-cols-2">
-              {Object.entries(risk.components).map(([name, component]) => (
-                <div key={name} className="rounded-lg bg-gray-50 p-3">
-                  <div className="capitalize">{name.replace(/([A-Z])/g, ' $1')}</div>
-                  <div className="font-mono font-semibold text-gray-900">{component.score?.toFixed(1) ?? 'Unavailable'}</div>
-                  <div className="text-xs">Effective weight: {(component.effectiveWeight * 100).toFixed(1)}%</div>
-                  <div className="text-xs">Contribution: {component.score === null ? 'Unavailable' : (component.score * component.effectiveWeight).toFixed(1)}</div>
-                </div>
-              ))}
-            </div>
-          </details>
             </>
           ) : (
             <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">Supporting environmental data is not available yet.</p>

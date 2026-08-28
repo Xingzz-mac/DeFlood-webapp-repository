@@ -15,7 +15,7 @@ DeFlood.AI is a React, Vite, TypeScript, and Tailwind prototype for community fl
 
 - Manual latitude and longitude with range validation.
 - Browser GPS capture with accuracy, source, update time, and stale-callback protection.
-- Independent ECMWF AIFS and IFS precipitation requests.
+- Independent precipitation requests for ECMWF AIFS Single, ECMWF IFS HRES, NOAA GFS Global, and UKMO Global deterministic forecasts.
 - Timestamp-aligned 24-hour, 48-hour, and 72-hour rainfall totals with coverage reporting.
 - GloFAS seven-day modeled river-discharge forecast, near-term primary-discharge usability, three-day peak, trend, and separately reported ensemble availability.
 - Open-Meteo elevation lookup.
@@ -27,12 +27,12 @@ DeFlood.AI is a React, Vite, TypeScript, and Tailwind prototype for community fl
 
 The Risk Assessment screen leads with Flood Hazard, Data Confidence, plain-language meaning, contributing factors, and next steps. Raw source values and metadata remain available in a collapsed supporting-data section.
 
-### Stage 2B — weather-model agreement
+### Stage 2B — multi-model rainfall consensus and agreement
 
-- Weighted AIFS/IFS comparison across 24-hour, 48-hour, and 72-hour rainfall accumulations.
-- Continuous agreement score plus Strong, Moderate, Weak, or Poor labels.
-- Two-model rainfall consensus, with single-model fallback when only one model is usable.
-- Agreement affects Data Confidence only; it does not directly alter physical Flood Hazard.
+- Per-horizon rainfall consensus across 24-hour, 48-hour, and 72-hour accumulations from ECMWF AIFS Single, ECMWF IFS HRES, NOAA GFS Global, and UKMO Global deterministic forecasts.
+- Three or four usable models use the median; exactly two use the arithmetic mean; one uses a single-model fallback with a confidence penalty; zero makes rainfall unavailable.
+- Multi-model disagreement produces a continuous agreement score plus Strong, Moderate, Weak, or Poor labels.
+- Multi-model disagreement affects Data Confidence only; it does not directly modify physical Flood Hazard.
 
 ### Stage 2C — deterministic prototype risk engine
 

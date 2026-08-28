@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { calculateRisk, classifyHazard } from './riskEngine'
+import { calculateHazardBreakdown, calculateRisk, classifyHazard } from './riskEngine'
 import {
   ELEVATION_MAX_STALE_MS,
   RIVER_MAX_STALE_MS,
   WEATHER_MAX_STALE_MS,
 } from './config'
+import { CONFIDENCE_WEIGHTS, HAZARD_WEIGHTS } from './riskConfig'
 import type { HistoricalBaseline } from './riskTypes'
 import type {
   EnvironmentalData,
@@ -194,6 +195,46 @@ describe('deterministic Flood Hazard', () => {
     expect(result.hazardLevel).toBe('HIGH')
   })
 
+  it('exposes full-data hazard contributions using the actual effective weights', () => {
+    const result = calculateRisk({
+      environmental: environmental({ aifs: [60, 100, 150], discharge: [80, 90, 100], elevation: 8 }),
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.calculationStatus).toBe('COMPLETE')
+    expect(result.hazardBreakdown.map(item => item.id)).toEqual([
+      'rainfall',
+      'riverAbnormality',
+      'riverTrend',
+      'elevation',
+    ])
+    for (const item of result.hazardBreakdown) {
+      expect(item.effectiveWeight).toBe(HAZARD_WEIGHTS[item.id])
+      expect(item.contribution).toBeCloseTo((item.score ?? 0) * item.effectiveWeight)
+    }
+    expect(result.hazardBreakdown.reduce((sum, item) => sum + item.contribution, 0))
+      .toBeCloseTo(result.hazardScore as number, 1)
+  })
+
+  it('redistributes actual hazard weights when optional river trend is unavailable', () => {
+    const calculation = calculateHazardBreakdown({
+      rainfall: 60,
+      riverAbnormality: 70,
+      riverTrend: null,
+      elevation: 40,
+    })
+    const byId = Object.fromEntries(calculation.hazardBreakdown.map(item => [item.id, item]))
+
+    expect(byId.rainfall.effectiveWeight).toBeCloseTo(HAZARD_WEIGHTS.rainfall / 0.9)
+    expect(byId.riverAbnormality.effectiveWeight).toBeCloseTo(HAZARD_WEIGHTS.riverAbnormality / 0.9)
+    expect(byId.riverTrend.effectiveWeight).toBe(0)
+    expect(byId.riverTrend.contribution).toBe(0)
+    expect(byId.elevation.effectiveWeight).toBeCloseTo(HAZARD_WEIGHTS.elevation / 0.9)
+    expect(calculation.hazardBreakdown.reduce((sum, item) => sum + item.contribution, 0))
+      .toBeCloseTo(calculation.hazardScore as number, 1)
+  })
+
   it('returns INCOMPLETE when the historical baseline is unavailable', () => {
     const result = calculateRisk({
       environmental: environmental(),
@@ -216,6 +257,8 @@ describe('deterministic Flood Hazard', () => {
     expect(result.contributingFactors).toContain(
       'No configured weather model is usable, so rainfall hazard and multi-model agreement are unavailable.',
     )
+    expect(result.hazardBreakdown.every(item => item.effectiveWeight === 0)).toBe(true)
+    expect(result.hazardBreakdown.every(item => item.contribution === 0)).toBe(true)
   })
 
   it('calculates hazard with only IFS but lowers confidence and leaves agreement unavailable', () => {
@@ -234,6 +277,33 @@ describe('deterministic Flood Hazard', () => {
     expect(single.modelAgreement.score).toBeNull()
     expect(single.modelAgreement.label).toBe('Unavailable — single usable weather model')
     expect(single.confidenceScore).toBeLessThan(both.confidenceScore)
+    const agreement = single.confidenceBreakdown.find(item => item.id === 'modelAgreement')
+    expect(agreement).toMatchObject({
+      score: null,
+      weight: CONFIDENCE_WEIGHTS.modelAgreement,
+      contribution: 0,
+      available: false,
+    })
+    expect(Math.abs(
+      single.confidenceBreakdown.reduce((sum, item) => sum + item.contribution, 0)
+      - single.confidenceScore,
+    )).toBeLessThanOrEqual(0.1)
+  })
+
+  it('exposes configured confidence weights and contributions that reconcile without renormalization', () => {
+    const result = calculateRisk({
+      environmental: environmental(),
+      historicalBaseline: history(Array.from({ length: 100 }, (_, index) => index + 1)),
+      nowMs: Date.parse(now),
+    })
+
+    for (const item of result.confidenceBreakdown) {
+      expect(item.weight).toBe(CONFIDENCE_WEIGHTS[item.id])
+      expect(item.contribution).toBeCloseTo((item.score ?? 0) * item.weight)
+    }
+    expect(result.confidenceBreakdown.reduce((sum, item) => sum + item.contribution, 0))
+      .toBeCloseTo(result.confidenceScore, 1)
+    expect(result.confidenceBreakdown.reduce((sum, item) => sum + item.weight, 0)).toBeCloseTo(1)
   })
 
   it('lowers confidence for disagreement without automatically lowering physical hazard', () => {
@@ -298,6 +368,13 @@ describe('deterministic Flood Hazard', () => {
     expect(result.calculationStatus).toBe('COMPLETE')
     expect(result.components.elevation.effectiveWeight).toBe(0)
     expect(Object.values(result.effectiveWeights).reduce((sum, value) => sum + value, 0)).toBeCloseTo(1)
+    const byId = Object.fromEntries(result.hazardBreakdown.map(item => [item.id, item]))
+    expect(byId.rainfall.effectiveWeight).toBeCloseTo(HAZARD_WEIGHTS.rainfall / 0.95)
+    expect(byId.riverAbnormality.effectiveWeight).toBeCloseTo(HAZARD_WEIGHTS.riverAbnormality / 0.95)
+    expect(byId.riverTrend.effectiveWeight).toBeCloseTo(HAZARD_WEIGHTS.riverTrend / 0.95)
+    expect(byId.elevation).toMatchObject({ available: false, effectiveWeight: 0, contribution: 0 })
+    expect(result.hazardBreakdown.reduce((sum, item) => sum + item.contribution, 0))
+      .toBeCloseTo(result.hazardScore as number, 1)
   })
 
   it('keeps fresh required rainfall and current river evidence eligible for COMPLETE', () => {

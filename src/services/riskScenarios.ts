@@ -1,4 +1,5 @@
 import type { FloodHazardLevel, RiskResult } from './riskTypes'
+import { calculateConfidenceBreakdown, calculateHazardBreakdown } from './riskEngine'
 
 export type RiskScenario = 'live' | 'demo-low' | 'demo-medium' | 'demo-high' | 'demo-incomplete'
 export type DemoRiskScenario = Exclude<RiskScenario, 'live'>
@@ -13,13 +14,6 @@ export const RISK_SCENARIO_OPTIONS: ReadonlyArray<{ value: RiskScenario; label: 
 
 const DEMO_ENGINE_VERSION = 'deflood-dev-scenario-v1'
 const DEMO_CALCULATED_AT = '2026-01-01T00:00:00.000Z'
-const EFFECTIVE_WEIGHTS = {
-  rainfall: 0.45,
-  riverAbnormality: 0.35,
-  riverTrend: 0.15,
-  elevation: 0.05,
-}
-
 function demoFreshness(usable: boolean, score: number) {
   const source = {
     score,
@@ -63,26 +57,33 @@ function completeFixture({
   factors: string[]
 }): RiskResult {
   const [rain24, rain48, rain72] = rainfallHorizons
+  const hazard = calculateHazardBreakdown({
+    rainfall,
+    riverAbnormality,
+    riverTrend,
+    elevation: 30,
+  })
+  const confidenceComponents = {
+    completeness: confidenceScore,
+    modelAgreement: confidenceScore,
+    ensembleConsistency: confidenceScore,
+    freshness: confidenceScore,
+  }
+  const confidence = calculateConfidenceBreakdown(confidenceComponents)
   return {
     engineVersion: DEMO_ENGINE_VERSION,
     calculatedAt: DEMO_CALCULATED_AT,
     calculationStatus: 'COMPLETE',
-    hazardScore,
+    hazardScore: hazard.hazardScore ?? hazardScore,
     hazardLevel,
     confidenceScore,
-    components: {
-      rainfall: { score: rainfall, baseWeight: EFFECTIVE_WEIGHTS.rainfall, effectiveWeight: EFFECTIVE_WEIGHTS.rainfall },
-      riverAbnormality: { score: riverAbnormality, baseWeight: EFFECTIVE_WEIGHTS.riverAbnormality, effectiveWeight: EFFECTIVE_WEIGHTS.riverAbnormality },
-      riverTrend: { score: riverTrend, baseWeight: EFFECTIVE_WEIGHTS.riverTrend, effectiveWeight: EFFECTIVE_WEIGHTS.riverTrend },
-      elevation: { score: 30, baseWeight: EFFECTIVE_WEIGHTS.elevation, effectiveWeight: EFFECTIVE_WEIGHTS.elevation },
-    },
-    effectiveWeights: { ...EFFECTIVE_WEIGHTS },
-    confidenceComponents: {
-      completeness: confidenceScore,
-      modelAgreement: confidenceScore,
-      ensembleConsistency: confidenceScore,
-      freshness: confidenceScore,
-    },
+    components: hazard.components,
+    effectiveWeights: Object.fromEntries(
+      hazard.hazardBreakdown.map(item => [item.id, item.effectiveWeight]),
+    ) as RiskResult['effectiveWeights'],
+    hazardBreakdown: hazard.hazardBreakdown,
+    confidenceComponents,
+    confidenceBreakdown: confidence.confidenceBreakdown,
     modelAgreement: {
       status: 'FOUR_USABLE_MODELS',
       score: confidenceScore,
@@ -140,6 +141,20 @@ function completeFixture({
   }
 }
 
+const incompleteHazard = calculateHazardBreakdown({
+  rainfall: null,
+  riverAbnormality: null,
+  riverTrend: null,
+  elevation: 30,
+})
+const incompleteConfidenceComponents = {
+  completeness: 70,
+  modelAgreement: null,
+  ensembleConsistency: null,
+  freshness: 55,
+}
+const incompleteConfidence = calculateConfidenceBreakdown(incompleteConfidenceComponents)
+
 const incompleteFixture: RiskResult = {
   engineVersion: DEMO_ENGINE_VERSION,
   calculatedAt: DEMO_CALCULATED_AT,
@@ -147,14 +162,11 @@ const incompleteFixture: RiskResult = {
   hazardScore: null,
   hazardLevel: null,
   confidenceScore: 30,
-  components: {
-    rainfall: { score: null, baseWeight: EFFECTIVE_WEIGHTS.rainfall, effectiveWeight: 0 },
-    riverAbnormality: { score: null, baseWeight: EFFECTIVE_WEIGHTS.riverAbnormality, effectiveWeight: 0 },
-    riverTrend: { score: null, baseWeight: EFFECTIVE_WEIGHTS.riverTrend, effectiveWeight: 0 },
-    elevation: { score: 30, baseWeight: EFFECTIVE_WEIGHTS.elevation, effectiveWeight: 1 },
-  },
-  effectiveWeights: { rainfall: 0, riverAbnormality: 0, riverTrend: 0, elevation: 1 },
-  confidenceComponents: { completeness: 25, modelAgreement: null, ensembleConsistency: null, freshness: 35 },
+  components: incompleteHazard.components,
+  effectiveWeights: { rainfall: 0, riverAbnormality: 0, riverTrend: 0, elevation: 0 },
+  hazardBreakdown: incompleteHazard.hazardBreakdown,
+  confidenceComponents: incompleteConfidenceComponents,
+  confidenceBreakdown: incompleteConfidence.confidenceBreakdown,
   modelAgreement: {
     status: 'NO_USABLE_MODELS',
     score: null,
@@ -185,7 +197,7 @@ const incompleteFixture: RiskResult = {
     alignedDays: 0,
     requiredAlignedDays: 2,
   },
-  freshness: demoFreshness(false, 35),
+  freshness: demoFreshness(false, 55),
   historicalBaseline: null,
   sourceInformation: {
     aifs: 'unavailable',
@@ -210,7 +222,7 @@ export const DEMO_RISK_FIXTURES: Readonly<Record<DemoRiskScenario, RiskResult>> 
     hazardLevel: 'LOW',
     hazardScore: 20,
     confidenceScore: 85,
-    rainfall: 18,
+    rainfall: 16.5,
     rainfallHorizons: [10, 18, 28],
     riverAbnormality: 22,
     riverTrend: 20,
@@ -225,7 +237,7 @@ export const DEMO_RISK_FIXTURES: Readonly<Record<DemoRiskScenario, RiskResult>> 
     hazardLevel: 'MEDIUM',
     hazardScore: 55,
     confidenceScore: 75,
-    rainfall: 58,
+    rainfall: 57.75,
     rainfallHorizons: [36, 64, 98],
     riverAbnormality: 56,
     riverTrend: 52,
@@ -240,7 +252,7 @@ export const DEMO_RISK_FIXTURES: Readonly<Record<DemoRiskScenario, RiskResult>> 
     hazardLevel: 'HIGH',
     hazardScore: 82,
     confidenceScore: 72,
-    rainfall: 86,
+    rainfall: 77.25,
     rainfallHorizons: [72, 128, 190],
     riverAbnormality: 92,
     riverTrend: 82,

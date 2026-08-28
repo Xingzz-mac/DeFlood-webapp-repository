@@ -88,6 +88,17 @@ export interface HazardComponents {
   elevation: HazardComponent
 }
 
+export type HazardBreakdownId = keyof HazardComponents
+
+export interface HazardBreakdownItem {
+  id: HazardBreakdownId
+  label: string
+  score: number | null
+  effectiveWeight: number
+  contribution: number
+  available: boolean
+}
+
 export interface EnsembleConsistency {
   score: number | null
   averageSpreadRatio: number | null
@@ -129,6 +140,17 @@ export interface ConfidenceComponents {
   freshness: number
 }
 
+export type ConfidenceBreakdownId = keyof ConfidenceComponents
+
+export interface ConfidenceBreakdownItem {
+  id: ConfidenceBreakdownId
+  label: string
+  score: number | null
+  weight: number
+  contribution: number
+  available: boolean
+}
+
 export interface SourceInformation {
   aifs: SourceStatus
   ifs: SourceStatus
@@ -148,7 +170,9 @@ export interface RiskResult {
   confidenceScore: number
   components: HazardComponents
   effectiveWeights: Record<keyof HazardComponents, number>
+  hazardBreakdown: HazardBreakdownItem[]
   confidenceComponents: ConfidenceComponents
+  confidenceBreakdown: ConfidenceBreakdownItem[]
   modelAgreement: ModelAgreement
   weatherConsensus: WeatherConsensus
   rainfallSeverity: number | null
