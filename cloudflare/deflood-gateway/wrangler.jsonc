@@ -1,0 +1,13 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "deflood-gateway",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-08-29",
+	"workers_dev": true,
+	"kv_namespaces": [
+		{
+			"binding": "DEFLOOD_CONFIG",
+			"id": "735ad5ba411342a9a3594e61a64e678b"
+		}
+	]
+}
