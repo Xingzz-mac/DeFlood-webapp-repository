@@ -15,14 +15,16 @@ import {
 import { withRequestTimeout } from './requestTimeout'
 import {
   haversineDistanceKm,
+  historicalMatchesRiverModel,
   nearbyRiverCandidates,
   RIVER_MAX_SEARCH_DISTANCE_KM,
+  riverModelWithinMaximumDistance,
   selectNearestAlignedRiverCandidate,
 } from './riverSpatial'
 import type { HistoricalBaseline } from './riskTypes'
 import type { GeographicCoordinate, RiverData } from './types'
 
-export const RIVER_SPATIAL_CACHE_SCHEMA_VERSION = 2
+export const RIVER_SPATIAL_CACHE_SCHEMA_VERSION = 3
 
 export interface RiverEvidenceSelection {
   river: RiverData
@@ -82,13 +84,14 @@ export function writeRiverEvidenceSelection(
     || selection.river.riverLookupMode === 'UNAVAILABLE'
     || !isPrimaryRiverUsable(selection.river.days)
     || selection.historicalBaseline.status !== 'available'
+    || !riverModelWithinMaximumDistance(selection.river)
+    || !historicalMatchesRiverModel(selection.river, selection.historicalBaseline)
   ) return
   const communityFingerprint = coordFingerprint(
     selection.river.communityCoordinate.latitude,
     selection.river.communityCoordinate.longitude,
   )
   const modelFingerprint = coordFingerprint(modelCoordinate.latitude, modelCoordinate.longitude)
-  if (selection.historicalBaseline.coordinateFingerprint !== modelFingerprint) return
   const key = riverSpatialCacheKey(
     communityFingerprint,
     modelFingerprint,
@@ -149,14 +152,14 @@ export function readRiverEvidenceSelection(
       || nowMs - lastSuccessfulAtMs > RIVER_MAX_STALE_MS
       || !modelCoordinate
       || entry.modelFingerprint !== coordFingerprint(modelCoordinate.latitude, modelCoordinate.longitude)
-      || entry.selection.historicalBaseline.coordinateFingerprint !== entry.modelFingerprint
       || entry.selection.historicalBaseline.status !== 'available'
+      || !historicalMatchesRiverModel(
+        entry.selection.river,
+        entry.selection.historicalBaseline,
+      )
       || !isPrimaryRiverUsable(entry.selection.river.days)
       || entry.selection.river.riverLookupMode !== entry.riverLookupMode
-      || (
-        entry.riverLookupMode === 'NEARBY_SEARCH'
-        && haversineDistanceKm(communityCoordinate, modelCoordinate) > RIVER_MAX_SEARCH_DISTANCE_KM
-      )
+      || haversineDistanceKm(communityCoordinate, modelCoordinate) > RIVER_MAX_SEARCH_DISTANCE_KM
     ) return null
     return {
       river: {
@@ -248,7 +251,12 @@ export async function resolveRiverEvidence(
   let forecastDate = exactForecastDate
   let lastHistoricalError: unknown = null
 
-  if (exactRiver.primaryUsable && exactModelCoordinate && exactForecastDate) {
+  if (
+    exactRiver.primaryUsable
+    && exactModelCoordinate
+    && exactForecastDate
+    && riverModelWithinMaximumDistance(exactRiver)
+  ) {
     try {
       const historicalBaseline = await historicalForCoordinate(
         exactModelCoordinate,
@@ -257,11 +265,7 @@ export async function resolveRiverEvidence(
         signal,
         storage,
       )
-      if (
-        historicalBaseline.status === 'available'
-        && historicalBaseline.coordinateFingerprint
-          === coordFingerprint(exactModelCoordinate.latitude, exactModelCoordinate.longitude)
-      ) {
+      if (historicalMatchesRiverModel(exactRiver, historicalBaseline)) {
         const selection = { river: exactRiver, historicalBaseline }
         writeRiverEvidenceSelection(selection, storage)
         return selection

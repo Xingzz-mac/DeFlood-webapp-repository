@@ -58,6 +58,8 @@ function river(model: GeographicCoordinate, discharge: number): RiverData {
 function baseline(model: GeographicCoordinate): HistoricalBaseline {
   return {
     status: 'available',
+    requestedCoordinate: model,
+    returnedModelCoordinate: model,
     coordinateFingerprint: coordFingerprint(model.latitude, model.longitude),
     calendarMonth: 8,
     values: Array(100).fill(10),
@@ -67,7 +69,7 @@ function baseline(model: GeographicCoordinate): HistoricalBaseline {
     lastValidDate: '2025-08-31',
     unit: 'm³/s',
     sourceId: 'test',
-    schemaVersion: 2,
+    schemaVersion: 3,
     retrievedAt: now,
     lastSuccessfulAt: now,
     cachedAt: null,

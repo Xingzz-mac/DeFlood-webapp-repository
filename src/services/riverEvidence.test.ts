@@ -6,9 +6,10 @@ import {
   resolveRiverEvidence,
   riverSpatialCacheKey,
   writeRiverEvidenceSelection,
+  RIVER_SPATIAL_CACHE_SCHEMA_VERSION,
   type RiverEvidenceDependencies,
 } from './riverEvidence'
-import { haversineDistanceKm } from './riverSpatial'
+import { haversineDistanceKm, riverSpatialQualityFactor } from './riverSpatial'
 import { calculateRisk } from './riskEngine'
 import type { HistoricalBaseline } from './riskTypes'
 import type {
@@ -84,9 +85,12 @@ function river(
 function baseline(
   coordinate: GeographicCoordinate,
   status: HistoricalBaseline['status'] = 'available',
+  requestedCoordinate: GeographicCoordinate = coordinate,
 ): HistoricalBaseline {
   return {
     status,
+    requestedCoordinate,
+    returnedModelCoordinate: status === 'available' ? coordinate : null,
     coordinateFingerprint: coordFingerprint(coordinate.latitude, coordinate.longitude),
     calendarMonth: 8,
     values: status === 'available' ? Array(100).fill(10) : [],
@@ -96,7 +100,7 @@ function baseline(
     lastValidDate: status === 'available' ? '2025-08-31' : null,
     unit: 'm³/s',
     sourceId: 'test',
-    schemaVersion: 2,
+    schemaVersion: 3,
     retrievedAt: now,
     lastSuccessfulAt: status === 'available' ? now : null,
     cachedAt: null,
@@ -150,6 +154,58 @@ describe('aligned current and historical GloFAS selection', () => {
     expect(deps.fetchManyHistorical).not.toHaveBeenCalled()
   })
 
+  it('accepts an exact query that returns a snapped model point within 15 km', async () => {
+    const snappedModel = { latitude: 15.925, longitude: 97.025 }
+    const exact = river(snappedModel, 20, 'EXACT_QUERY')
+    const fetchNearbyCurrent = vi.fn()
+    const deps = dependencies({
+      fetchNearbyCurrent,
+      readHistorical: vi.fn().mockReturnValue(baseline(snappedModel)),
+    })
+
+    const selected = await resolveRiverEvidence(community, exact, undefined, undefined, deps)
+
+    expect(selected.river.riverLookupMode).toBe('EXACT_QUERY')
+    expect(selected.river.riverModelCoordinate).toEqual(snappedModel)
+    expect(selected.river.riverModelDistanceKm).toBeCloseTo(3.85, 1)
+    expect(riverSpatialQualityFactor(selected.river)).toBe(0.95)
+    expect(fetchNearbyCurrent).not.toHaveBeenCalled()
+  })
+
+  it('rejects an exact-query model point outside 15 km and starts nearby search', async () => {
+    const outside = { latitude: 16.05, longitude: 97 }
+    const readHistorical = vi.fn().mockReturnValue(baseline(outside))
+    const fetchNearbyCurrent = vi.fn().mockResolvedValue([])
+
+    const selected = await resolveRiverEvidence(
+      community,
+      river(outside, 20, 'EXACT_QUERY'),
+      undefined,
+      undefined,
+      dependencies({ readHistorical, fetchNearbyCurrent }),
+    )
+
+    expect(readHistorical).not.toHaveBeenCalled()
+    expect(fetchNearbyCurrent).toHaveBeenCalledTimes(1)
+    expect(selected.river.riverLookupMode).toBe('UNAVAILABLE')
+  })
+
+  it('rejects exact current A when the historical response resolves to model point B', async () => {
+    const historicalModel = { latitude: 15.925, longitude: 97.025 }
+    const selected = await resolveRiverEvidence(
+      community,
+      river(community, 20, 'EXACT_QUERY'),
+      undefined,
+      undefined,
+      dependencies({
+        readHistorical: vi.fn().mockReturnValue(baseline(historicalModel, 'available', community)),
+      }),
+    )
+
+    expect(selected.river.riverLookupMode).toBe('UNAVAILABLE')
+    expect(selected.historicalBaseline.status).toBe('error')
+  })
+
   it('falls back to the nearest eligible point and keeps current/history coordinates aligned', async () => {
     const nearer = { latitude: 15.95, longitude: 97 }
     const farther = { latitude: 16, longitude: 97 }
@@ -180,6 +236,28 @@ describe('aligned current and historical GloFAS selection', () => {
     )
     expect(deps.fetchNearbyCurrent).toHaveBeenCalledTimes(1)
     expect(deps.fetchManyHistorical).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a nearby current candidate when batched history returns another grid point', async () => {
+    const currentModel = { latitude: 15.95, longitude: 97 }
+    const historicalModel = { latitude: 15.975, longitude: 97.025 }
+    const selected = await resolveRiverEvidence(
+      community,
+      river(null, null, 'UNAVAILABLE'),
+      undefined,
+      undefined,
+      dependencies({
+        fetchNearbyCurrent: vi.fn().mockResolvedValue([
+          river(currentModel, 10, 'NEARBY_SEARCH'),
+        ]),
+        fetchManyHistorical: vi.fn().mockResolvedValue([
+          baseline(historicalModel, 'available', currentModel),
+        ]),
+      }),
+    )
+
+    expect(selected.river.riverLookupMode).toBe('UNAVAILABLE')
+    expect(selected.historicalBaseline.status).toBe('error')
   })
 
   it('searches nearby when exact current is usable but exact same-point history is not', async () => {
@@ -271,6 +349,7 @@ describe('aligned current and historical GloFAS selection', () => {
       8,
     )
     expect(firstKey).not.toBe(secondKey)
+    expect(RIVER_SPATIAL_CACHE_SCHEMA_VERSION).toBe(3)
     expect(storage.getItem(firstKey)).not.toBeNull()
     expect(storage.getItem(secondKey)).not.toBeNull()
     expect(readRiverEvidenceSelection(community, 8, storage, Date.parse(now))
@@ -281,5 +360,18 @@ describe('aligned current and historical GloFAS selection', () => {
       storage,
       Date.parse(now),
     )).toBeNull()
+  })
+
+  it('does not cache an unaligned current/historical selection', () => {
+    const storage = new MemoryStorage()
+    const currentModel = { latitude: 15.95, longitude: 97 }
+    const historicalModel = { latitude: 15.975, longitude: 97.025 }
+
+    writeRiverEvidenceSelection({
+      river: river(currentModel, 10, 'NEARBY_SEARCH'),
+      historicalBaseline: baseline(historicalModel, 'available', currentModel),
+    }, storage, now)
+
+    expect(storage.length).toBe(0)
   })
 })

@@ -139,6 +139,8 @@ export function buildRiskEvidence(
     },
     historical: historical
       ? {
+          requestedCoordinate: historical.requestedCoordinate,
+          returnedModelCoordinate: historical.returnedModelCoordinate,
           coordinateFingerprint: historical.coordinateFingerprint,
           calendarMonth: historical.calendarMonth,
           sourceId: historical.sourceId,

@@ -56,7 +56,9 @@ const river: RiverData = {
 
 const historicalBaseline: HistoricalBaseline = {
   status: 'available',
-  coordinateFingerprint: '16.5000,95.0000',
+  requestedCoordinate: { latitude: 16.525002, longitude: 95.025024 },
+  returnedModelCoordinate: { latitude: 16.525002, longitude: 95.025024 },
+  coordinateFingerprint: '16.5250,95.0250',
   calendarMonth: 8,
   values: Array.from({ length: 101 }, (_, index) => index),
   validSampleCount: 101,
@@ -65,7 +67,7 @@ const historicalBaseline: HistoricalBaseline = {
   lastValidDate: '2025-08-31',
   unit: 'm³/s',
   sourceId: 'test',
-  schemaVersion: 1,
+  schemaVersion: 3,
   retrievedAt: '2026-08-08T00:00:00.000Z',
   lastSuccessfulAt: '2026-08-08T00:00:00.000Z',
   cachedAt: null,

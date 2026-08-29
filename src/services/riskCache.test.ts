@@ -121,6 +121,8 @@ function environmental(options: {
 function history(values: number[]): HistoricalBaseline {
   return {
     status: 'available',
+    requestedCoordinate: { latitude: 16.5, longitude: 95 },
+    returnedModelCoordinate: { latitude: 16.5, longitude: 95 },
     coordinateFingerprint: fingerprint,
     calendarMonth: 8,
     values,
@@ -130,7 +132,7 @@ function history(values: number[]): HistoricalBaseline {
     lastValidDate: '2025-08-31',
     unit: 'm³/s',
     sourceId: 'test-history',
-    schemaVersion: 2,
+    schemaVersion: 3,
     retrievedAt: now,
     lastSuccessfulAt: now,
     cachedAt: null,
@@ -229,6 +231,10 @@ describe('derived risk cache identity', () => {
     const evidence = buildRiskEvidence(current, historical)
     const payload = JSON.parse(evidence.evidencePayload) as {
       weather: Record<string, { model: string }>
+      historical: {
+        requestedCoordinate: { latitude: number; longitude: number }
+        returnedModelCoordinate: { latitude: number; longitude: number } | null
+      }
     }
     const result = calculateRisk({ environmental: current, historicalBaseline: historical, nowMs })
     storage.setItem(riskCacheKey(evidence), JSON.stringify({
@@ -240,7 +246,11 @@ describe('derived risk cache identity', () => {
     }))
 
     expect(Object.keys(payload.weather)).toEqual(['aifs', 'ifs', 'gfs', 'ukmo'])
-    expect(RISK_CACHE_SCHEMA_VERSION).toBe(5)
+    expect(payload.historical).toMatchObject({
+      requestedCoordinate: { latitude: 16.5, longitude: 95 },
+      returnedModelCoordinate: { latitude: 16.5, longitude: 95 },
+    })
+    expect(RISK_CACHE_SCHEMA_VERSION).toBe(6)
     expect(readRiskCache(evidence, storage, nowMs)).toBeNull()
   })
 })

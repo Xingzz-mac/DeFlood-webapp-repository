@@ -1,4 +1,9 @@
-import type { EnvironmentalData, SourceStatus, WeatherModelKey } from './types'
+import type {
+  EnvironmentalData,
+  GeographicCoordinate,
+  SourceStatus,
+  WeatherModelKey,
+} from './types'
 
 export type CalculationStatus = 'NOT_CALCULATED' | 'INCOMPLETE' | 'COMPLETE'
 export type FloodHazardLevel = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -58,6 +63,8 @@ export type HistoricalBaselineStatus = 'available' | 'unavailable' | 'error'
 
 export interface HistoricalBaseline {
   status: HistoricalBaselineStatus
+  requestedCoordinate: GeographicCoordinate
+  returnedModelCoordinate: GeographicCoordinate | null
   coordinateFingerprint: string
   calendarMonth: number
   values: number[]

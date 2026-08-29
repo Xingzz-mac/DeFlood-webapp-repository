@@ -110,6 +110,8 @@ function historicalFixture(): HistoricalBaseline {
   const values = Array.from({ length: 100 }, (_, index) => index + 1)
   return {
     status: 'available',
+    requestedCoordinate: { latitude: 16.5, longitude: 95 },
+    returnedModelCoordinate: { latitude: 16.5, longitude: 95 },
     coordinateFingerprint: fingerprint,
     calendarMonth: 8,
     values,
@@ -119,7 +121,7 @@ function historicalFixture(): HistoricalBaseline {
     lastValidDate: '2025-08-31',
     unit: 'm³/s',
     sourceId: 'test-history',
-    schemaVersion: 2,
+    schemaVersion: 3,
     retrievedAt: now,
     lastSuccessfulAt: now,
     cachedAt: null,

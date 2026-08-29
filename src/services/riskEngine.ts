@@ -34,6 +34,10 @@ import type {
   WeatherModels,
 } from './types'
 import { isWeatherModelUsable, WEATHER_MODEL_KEYS } from './weatherModels'
+import {
+  historicalMatchesRiverModel,
+  riverModelWithinMaximumDistance,
+} from './riverSpatial'
 
 export function classifyHazard(score: number): FloodHazardLevel {
   if (score < 40) return 'LOW'
@@ -366,15 +370,19 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
       ? environmental.weatherModels[key]
       : ineligibleWeather(environmental.weatherModels[key]),
   ])) as WeatherModels
-  const currentRiverDays = freshness.sources.river.usable
+  const currentRiverEligible = riverModelWithinMaximumDistance(environmental.river)
+  const currentRiverDays = freshness.sources.river.usable && currentRiverEligible
     ? environmental.river.days
     : []
+  const alignedHistorical = historicalMatchesRiverModel(environmental.river, historical)
+    ? historical
+    : null
   const modelAgreement = calculateModelAgreement(currentWeatherModels)
   const weatherConsensus = buildWeatherConsensus(currentWeatherModels)
   const rainfallSeverity = calculateRainfallSeverity(weatherConsensus)
   const primaryRiverUsable = isPrimaryRiverUsable(currentRiverDays)
-  const riverPercentile = historical?.status === 'available' && primaryRiverUsable
-    ? calculatePercentileRank(environmental.river.peakDischarge, historical.values)
+  const riverPercentile = alignedHistorical && primaryRiverUsable
+    ? calculatePercentileRank(environmental.river.peakDischarge, alignedHistorical.values)
     : null
   const riverAbnormality = calculateRiverAbnormality(riverPercentile)
   const riverTrend = calculateRiverTrend(currentRiverDays)
@@ -388,7 +396,10 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     riverTrend: riverTrend.score,
     elevation,
   })
-  const completeness = calculateCompleteness(environmental, historical)
+  const completeness = calculateCompleteness(
+    environmental,
+    alignedHistorical,
+  )
   const confidenceComponents = {
     completeness,
     modelAgreement: modelAgreement.score,
@@ -405,10 +416,15 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
     ukmo: weatherSourceStatus(environmental.weatherModels.ukmo, freshness.sources.ukmo),
     river: environmental.river.metadata.status,
     elevation: environmental.terrain.metadata.status,
-    historical: historical?.status ?? 'not-requested',
+    historical: alignedHistorical
+      ? 'available'
+      : historical?.status === 'available'
+        ? 'unavailable'
+        : historical?.status ?? 'not-requested',
   } as const
   const degraded = environmental.status !== 'live'
-    || historical?.status !== 'available'
+    || !alignedHistorical
+    || !currentRiverEligible
     || modelAgreement.score === null
     || ensembleConsistency.score === null
     || Object.values(freshness.sources).some(source => !source.usable)
@@ -458,7 +474,7 @@ export function calculateRisk(input: RiskEngineInput): RiskResult {
       usableModelCount: modelAgreement.usableModelCount,
       totalConfiguredModelCount: modelAgreement.totalConfiguredModelCount,
       ensembleScore: ensembleConsistency.score,
-      historicalAvailable: historical?.status === 'available',
+      historicalAvailable: alignedHistorical !== null,
       primaryRiverUsable,
     }),
     lastMeaningfulDataUpdate: latestSuccessfulUpdate(

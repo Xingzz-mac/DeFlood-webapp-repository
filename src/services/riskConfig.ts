@@ -2,12 +2,12 @@
  * Prototype decision-support heuristics. These thresholds require regional
  * calibration and validation before any operational use.
  */
-export const RISK_ENGINE_VERSION = 'deflood-risk-engine-2f-v1'
-export const RISK_CACHE_SCHEMA_VERSION = 5
+export const RISK_ENGINE_VERSION = 'deflood-risk-engine-2g-v1'
+export const RISK_CACHE_SCHEMA_VERSION = 6
 export const RISK_CACHE_MAX_AGE_MS = 30 * 60 * 1000
 export const RISK_RECALCULATION_INTERVAL_MS = 60 * 1000
 
-export const HISTORICAL_SCHEMA_VERSION = 2
+export const HISTORICAL_SCHEMA_VERSION = 3
 export const HISTORICAL_SOURCE_ID = 'open-meteo-glofas-v4-seamless-default'
 export const HISTORICAL_START_DATE = '1984-01-01'
 export const HISTORICAL_MIN_YEARS = 10

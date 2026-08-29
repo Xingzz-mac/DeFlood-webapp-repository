@@ -52,6 +52,10 @@ function river(): RiverData {
 function baseline(status: HistoricalBaseline['status']): HistoricalBaseline {
   return {
     status,
+    requestedCoordinate: { latitude: 16.5, longitude: 95 },
+    returnedModelCoordinate: status === 'available'
+      ? { latitude: 16.5, longitude: 95 }
+      : null,
     coordinateFingerprint: '16.5000,95.0000',
     calendarMonth: 8,
     values: status === 'available' ? Array.from({ length: 101 }, (_, index) => index) : [],
@@ -61,7 +65,7 @@ function baseline(status: HistoricalBaseline['status']): HistoricalBaseline {
     lastValidDate: null,
     unit: 'm³/s',
     sourceId: 'test',
-    schemaVersion: 1,
+    schemaVersion: 3,
     retrievedAt: '2026-08-08T00:00:00.000Z',
     lastSuccessfulAt: status === 'available' ? '2026-08-08T00:00:00.000Z' : null,
     cachedAt: null,

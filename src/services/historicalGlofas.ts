@@ -69,6 +69,14 @@ export function readHistoricalBaseline(
       || entry.calendarMonth !== calendarMonth
       || entry.sourceId !== HISTORICAL_SOURCE_ID
     ) return null
+    const returnedModelCoordinate = entry.baseline.returnedModelCoordinate
+    if (
+      !returnedModelCoordinate
+      || coordFingerprint(
+        returnedModelCoordinate.latitude,
+        returnedModelCoordinate.longitude,
+      ) !== entry.coordinateFingerprint
+    ) return null
     const storedAtMs = Date.parse(entry.storedAt)
     if (!Number.isFinite(storedAtMs) || nowMs - storedAtMs > HISTORICAL_CACHE_MAX_AGE_MS) {
       return null
@@ -88,6 +96,14 @@ export function writeHistoricalBaseline(
   storage?: Storage,
   storedAt = new Date().toISOString(),
 ): void {
+  const returnedModelCoordinate = baseline.returnedModelCoordinate
+  if (
+    !returnedModelCoordinate
+    || baseline.coordinateFingerprint !== coordFingerprint(
+      returnedModelCoordinate.latitude,
+      returnedModelCoordinate.longitude,
+    )
+  ) return
   try {
     const target = availableStorage(storage)
     if (!target) return
@@ -110,7 +126,8 @@ export function writeHistoricalBaseline(
 
 export function buildHistoricalBaseline(
   daily: HistoricalFloodResponse['daily'],
-  fingerprint: string,
+  requestedCoordinate: GeographicCoordinate,
+  returnedModelCoordinate: GeographicCoordinate,
   calendarMonth: number,
   retrievedAt = new Date().toISOString(),
 ): HistoricalBaseline {
@@ -135,7 +152,12 @@ export function buildHistoricalBaseline(
 
   return {
     status: available ? 'available' : 'unavailable',
-    coordinateFingerprint: fingerprint,
+    requestedCoordinate,
+    returnedModelCoordinate,
+    coordinateFingerprint: coordFingerprint(
+      returnedModelCoordinate.latitude,
+      returnedModelCoordinate.longitude,
+    ),
     calendarMonth,
     values: samples.map(sample => sample.value),
     validSampleCount,
@@ -159,8 +181,11 @@ export function historicalErrorBaseline(
   calendarMonth: number,
   error: string,
 ): HistoricalBaseline {
+  const requestedCoordinate = { latitude, longitude }
   return {
     status: 'error',
+    requestedCoordinate,
+    returnedModelCoordinate: null,
     coordinateFingerprint: coordFingerprint(latitude, longitude),
     calendarMonth,
     values: [],
@@ -177,6 +202,24 @@ export function historicalErrorBaseline(
     cached: false,
     error,
   }
+}
+
+function returnedHistoricalCoordinate(data: HistoricalFloodResponse): GeographicCoordinate {
+  const latitude = data.latitude
+  const longitude = data.longitude
+  if (
+    typeof latitude !== 'number'
+    || !Number.isFinite(latitude)
+    || latitude < -90
+    || latitude > 90
+    || typeof longitude !== 'number'
+    || !Number.isFinite(longitude)
+    || longitude < -180
+    || longitude > 180
+  ) {
+    throw new Error('Historical Flood API returned an invalid model coordinate')
+  }
+  return { latitude, longitude }
 }
 
 function historicalEndDate(forecastDate: string): string {
@@ -214,8 +257,8 @@ async function requestHistoricalBaseline(
 ): Promise<HistoricalBaseline> {
   const calendarMonth = monthFromForecastDate(forecastDate)
   if (calendarMonth === null) throw new Error('Cannot determine forecast calendar month')
-  const fingerprint = coordFingerprint(latitude, longitude)
-  const params = historicalParameters([{ latitude, longitude }], forecastDate)
+  const requestedCoordinate = { latitude, longitude }
+  const params = historicalParameters([requestedCoordinate], forecastDate)
   const response = await withRequestTimeout(
     'Historical GloFAS',
     requestSignal => fetch(`${FLOOD_BASE}?${params}`, { signal: requestSignal }),
@@ -224,7 +267,12 @@ async function requestHistoricalBaseline(
   if (!response.ok) throw new Error(`Historical Flood API returned ${response.status}`)
   const data: HistoricalFloodResponse = await response.json()
   if (data.error) throw new Error(data.reason ?? 'Historical Flood API error')
-  const baseline = buildHistoricalBaseline(data.daily, fingerprint, calendarMonth)
+  const baseline = buildHistoricalBaseline(
+    data.daily,
+    requestedCoordinate,
+    returnedHistoricalCoordinate(data),
+    calendarMonth,
+  )
   writeHistoricalBaseline(baseline)
   return baseline
 }
@@ -268,10 +316,11 @@ export async function fetchHistoricalBaselines(
   }
   return responses.map((data, index) => {
     if (data.error) throw new Error(data.reason ?? 'Historical Flood API error')
-    const coordinate = coordinates[index]
+    const requestedCoordinate = coordinates[index]
     const baseline = buildHistoricalBaseline(
       data.daily,
-      coordFingerprint(coordinate.latitude, coordinate.longitude),
+      requestedCoordinate,
+      returnedHistoricalCoordinate(data),
       calendarMonth,
     )
     writeHistoricalBaseline(baseline)

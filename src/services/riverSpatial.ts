@@ -63,13 +63,37 @@ export interface AlignedRiverCandidate {
   requestIndex: number
 }
 
-export function isAlignedRiverEvidence(candidate: AlignedRiverCandidate): boolean {
-  const modelCoordinate = candidate.river.riverModelCoordinate
-  return candidate.river.primaryUsable
-    && candidate.historicalBaseline.status === 'available'
-    && modelCoordinate !== null
-    && candidate.historicalBaseline.coordinateFingerprint
+export function riverModelWithinMaximumDistance(river: RiverData): boolean {
+  const modelCoordinate = river.riverModelCoordinate
+  if (!modelCoordinate || river.riverLookupMode === 'UNAVAILABLE') return false
+  return haversineDistanceKm(river.communityCoordinate, modelCoordinate)
+    <= RIVER_MAX_SEARCH_DISTANCE_KM
+}
+
+export function historicalMatchesRiverModel(
+  river: RiverData,
+  historicalBaseline: HistoricalBaseline | null,
+): boolean {
+  const modelCoordinate = river.riverModelCoordinate
+  const historicalCoordinate = historicalBaseline?.returnedModelCoordinate
+  if (
+    !modelCoordinate
+    || !historicalCoordinate
+    || historicalBaseline?.status !== 'available'
+  ) return false
+  const historicalFingerprint = coordFingerprint(
+    historicalCoordinate.latitude,
+    historicalCoordinate.longitude,
+  )
+  return historicalBaseline.coordinateFingerprint === historicalFingerprint
+    && historicalFingerprint
       === coordFingerprint(modelCoordinate.latitude, modelCoordinate.longitude)
+}
+
+export function isAlignedRiverEvidence(candidate: AlignedRiverCandidate): boolean {
+  return candidate.river.primaryUsable
+    && riverModelWithinMaximumDistance(candidate.river)
+    && historicalMatchesRiverModel(candidate.river, candidate.historicalBaseline)
 }
 
 export function selectNearestAlignedRiverCandidate(

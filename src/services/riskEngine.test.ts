@@ -140,6 +140,10 @@ function environmental(options: {
 function history(values: number[], status: HistoricalBaseline['status'] = 'available'): HistoricalBaseline {
   return {
     status,
+    requestedCoordinate: { latitude: 16.5, longitude: 95 },
+    returnedModelCoordinate: status === 'available'
+      ? { latitude: 16.5, longitude: 95 }
+      : null,
     coordinateFingerprint: fingerprint,
     calendarMonth: 8,
     values: status === 'available' ? values : [],
@@ -149,7 +153,7 @@ function history(values: number[], status: HistoricalBaseline['status'] = 'avail
     lastValidDate: status === 'available' ? '2025-08-31' : null,
     unit: 'm³/s',
     sourceId: 'test-history',
-    schemaVersion: 1,
+    schemaVersion: 3,
     retrievedAt: now,
     lastSuccessfulAt: status === 'available' ? now : null,
     cachedAt: null,
@@ -352,6 +356,8 @@ describe('deterministic Flood Hazard', () => {
       environmental: snappedExactEnvironmental,
       historicalBaseline: {
         ...sharedHistory,
+        requestedCoordinate: { latitude: 16.556, longitude: 95 },
+        returnedModelCoordinate: { latitude: 16.556, longitude: 95 },
         coordinateFingerprint: '16.5560,95.0000',
       },
       nowMs: Date.parse(now),
@@ -360,6 +366,8 @@ describe('deterministic Flood Hazard', () => {
       environmental: nearbyEnvironmental,
       historicalBaseline: {
         ...sharedHistory,
+        requestedCoordinate: { latitude: 16.556, longitude: 95 },
+        returnedModelCoordinate: { latitude: 16.556, longitude: 95 },
         coordinateFingerprint: '16.5560,95.0000',
       },
       nowMs: Date.parse(now),
@@ -374,6 +382,30 @@ describe('deterministic Flood Hazard', () => {
     expect(nearby.confidenceComponents.completeness).toBe(96.2)
     expect(snappedExact.confidenceScore).toBeLessThan(direct.confidenceScore)
     expect(nearby.confidenceScore).toBe(snappedExact.confidenceScore)
+  })
+
+  it('makes river abnormality unavailable when current and historical returned coordinates differ', () => {
+    const current = environmental({
+      aifs: [50, 100, 150],
+      discharge: [80, 90, 100],
+    })
+    const mismatchedHistory = history(Array.from({ length: 100 }, (_, index) => index + 1))
+    mismatchedHistory.requestedCoordinate = { latitude: 16.5, longitude: 95 }
+    mismatchedHistory.returnedModelCoordinate = { latitude: 16.525, longitude: 95.025 }
+    mismatchedHistory.coordinateFingerprint = '16.5250,95.0250'
+
+    const result = calculateRisk({
+      environmental: current,
+      historicalBaseline: mismatchedHistory,
+      nowMs: Date.parse(now),
+    })
+
+    expect(result.calculationStatus).toBe('INCOMPLETE')
+    expect(result.hazardScore).toBeNull()
+    expect(result.hazardLevel).toBeNull()
+    expect(result.riverPercentile).toBeNull()
+    expect(result.riverAbnormality).toBeNull()
+    expect(result.sourceInformation.historical).toBe('unavailable')
   })
 
   it.each([
