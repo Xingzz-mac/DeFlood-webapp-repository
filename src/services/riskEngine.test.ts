@@ -120,6 +120,10 @@ function environmental(options: {
         p25: { available: true, complete: true, validDays: 7, expectedDays: 7 },
         p75: { available: true, complete: true, validDays: 7, expectedDays: 7 },
       },
+      communityCoordinate: { latitude: 16.5, longitude: 95 },
+      riverModelCoordinate: valid.length >= 2 ? { latitude: 16.5, longitude: 95 } : null,
+      riverModelDistanceKm: valid.length >= 2 ? 0 : null,
+      riverLookupMode: valid.length >= 2 ? 'EXACT_QUERY' : 'UNAVAILABLE',
       metadata: metadata(valid.length >= 2 ? 'live' : 'incomplete'),
     },
     terrain: {
@@ -326,6 +330,50 @@ describe('deterministic Flood Hazard', () => {
     expect(disagreeing.weatherConsensus).toEqual(agreeing.weatherConsensus)
     expect(disagreeing.hazardScore).toBe(agreeing.hazardScore)
     expect(disagreeing.confidenceScore).toBeLessThan(agreeing.confidenceScore)
+  })
+
+  it('uses actual grid distance for confidence without changing hazard from lookup-mode classification', () => {
+    const directEnvironmental = environmental({
+      aifs: [50, 100, 150],
+      discharge: [80, 90, 100],
+    })
+    const snappedExactEnvironmental = structuredClone(directEnvironmental)
+    snappedExactEnvironmental.river.riverModelCoordinate = { latitude: 16.556, longitude: 95 }
+    snappedExactEnvironmental.river.riverModelDistanceKm = 6.2
+    const nearbyEnvironmental = structuredClone(snappedExactEnvironmental)
+    nearbyEnvironmental.river.riverLookupMode = 'NEARBY_SEARCH'
+    const sharedHistory = history(Array.from({ length: 100 }, (_, index) => index + 1))
+    const direct = calculateRisk({
+      environmental: directEnvironmental,
+      historicalBaseline: sharedHistory,
+      nowMs: Date.parse(now),
+    })
+    const snappedExact = calculateRisk({
+      environmental: snappedExactEnvironmental,
+      historicalBaseline: {
+        ...sharedHistory,
+        coordinateFingerprint: '16.5560,95.0000',
+      },
+      nowMs: Date.parse(now),
+    })
+    const nearby = calculateRisk({
+      environmental: nearbyEnvironmental,
+      historicalBaseline: {
+        ...sharedHistory,
+        coordinateFingerprint: '16.5560,95.0000',
+      },
+      nowMs: Date.parse(now),
+    })
+
+    expect(snappedExact.hazardScore).toBe(direct.hazardScore)
+    expect(nearby.hazardScore).toBe(snappedExact.hazardScore)
+    expect(nearby.hazardLevel).toBe(snappedExact.hazardLevel)
+    expect(nearby.rainfallSeverity).toBe(direct.rainfallSeverity)
+    expect(nearby.riverAbnormality).toBe(direct.riverAbnormality)
+    expect(nearby.riverTrend).toEqual(direct.riverTrend)
+    expect(nearby.confidenceComponents.completeness).toBe(96.2)
+    expect(snappedExact.confidenceScore).toBeLessThan(direct.confidenceScore)
+    expect(nearby.confidenceScore).toBe(snappedExact.confidenceScore)
   })
 
   it.each([

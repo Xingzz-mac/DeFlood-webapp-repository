@@ -9,9 +9,12 @@ import {
   HISTORICAL_START_DATE,
 } from './riskConfig'
 import type { HistoricalBaseline } from './riskTypes'
+import type { GeographicCoordinate } from './types'
 import { withRequestTimeout } from './requestTimeout'
 
-interface HistoricalFloodResponse {
+export interface HistoricalFloodResponse {
+  latitude?: number
+  longitude?: number
   daily?: {
     time?: string[]
     river_discharge?: (number | null)[]
@@ -182,6 +185,20 @@ function historicalEndDate(forecastDate: string): string {
   return `${Number(match[1]) - 1}-12-31`
 }
 
+function historicalParameters(
+  coordinates: GeographicCoordinate[],
+  forecastDate: string,
+): URLSearchParams {
+  return new URLSearchParams({
+    latitude: coordinates.map(coordinate => coordinate.latitude).join(','),
+    longitude: coordinates.map(coordinate => coordinate.longitude).join(','),
+    daily: 'river_discharge',
+    start_date: HISTORICAL_START_DATE,
+    end_date: historicalEndDate(forecastDate),
+    timezone: 'GMT',
+  })
+}
+
 export function monthFromForecastDate(date: string): number | null {
   const match = /^\d{4}-(\d{2})-\d{2}$/.exec(date)
   if (!match) return null
@@ -198,14 +215,7 @@ async function requestHistoricalBaseline(
   const calendarMonth = monthFromForecastDate(forecastDate)
   if (calendarMonth === null) throw new Error('Cannot determine forecast calendar month')
   const fingerprint = coordFingerprint(latitude, longitude)
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    daily: 'river_discharge',
-    start_date: HISTORICAL_START_DATE,
-    end_date: historicalEndDate(forecastDate),
-    timezone: 'GMT',
-  })
+  const params = historicalParameters([{ latitude, longitude }], forecastDate)
   const response = await withRequestTimeout(
     'Historical GloFAS',
     requestSignal => fetch(`${FLOOD_BASE}?${params}`, { signal: requestSignal }),
@@ -234,4 +244,37 @@ export function fetchHistoricalBaseline(
     .finally(() => inFlightRequests.delete(key))
   inFlightRequests.set(key, request)
   return request
+}
+
+export async function fetchHistoricalBaselines(
+  coordinates: GeographicCoordinate[],
+  forecastDate: string,
+  signal?: AbortSignal,
+): Promise<HistoricalBaseline[]> {
+  if (coordinates.length === 0) return []
+  const calendarMonth = monthFromForecastDate(forecastDate)
+  if (calendarMonth === null) throw new Error('Cannot determine forecast calendar month')
+  const params = historicalParameters(coordinates, forecastDate)
+  const response = await withRequestTimeout(
+    'Historical GloFAS nearby search',
+    requestSignal => fetch(`${FLOOD_BASE}?${params}`, { signal: requestSignal }),
+    signal,
+  )
+  if (!response.ok) throw new Error(`Historical Flood API returned ${response.status}`)
+  const payload: HistoricalFloodResponse | HistoricalFloodResponse[] = await response.json()
+  const responses = Array.isArray(payload) ? payload : [payload]
+  if (responses.length !== coordinates.length) {
+    throw new Error('Historical Flood API returned an unexpected number of coordinate results')
+  }
+  return responses.map((data, index) => {
+    if (data.error) throw new Error(data.reason ?? 'Historical Flood API error')
+    const coordinate = coordinates[index]
+    const baseline = buildHistoricalBaseline(
+      data.daily,
+      coordFingerprint(coordinate.latitude, coordinate.longitude),
+      calendarMonth,
+    )
+    writeHistoricalBaseline(baseline)
+    return baseline
+  })
 }

@@ -134,7 +134,7 @@ describe('source quality and coordinate-safe cache', () => {
       storedAt: '2026-08-19T00:00:00.000Z',
     }))
 
-    expect(ENV_CACHE_SCHEMA_VERSION).toBe(5)
+    expect(ENV_CACHE_SCHEMA_VERSION).toBe(7)
     expect(readStaleCache(16.5, 95, storage)).toBeNull()
   })
 })

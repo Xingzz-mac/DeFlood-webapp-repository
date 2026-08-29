@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ENVIRONMENTAL_REQUEST_TIMEOUT_MS } from './config'
-import { buildHistoricalBaseline, fetchHistoricalBaseline } from './historicalGlofas'
+import {
+  buildHistoricalBaseline,
+  fetchHistoricalBaseline,
+  fetchHistoricalBaselines,
+} from './historicalGlofas'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -95,5 +99,31 @@ describe('historical GloFAS baseline', () => {
     await fetchHistoricalBaseline(17.5, 96, '2026-08-19')
     expect(retryFetch).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('batches historical candidate coordinates and preserves the 10-year/100-sample rule', async () => {
+    const time = Array.from({ length: 100 }, (_, index) => {
+      const year = 1984 + Math.floor(index / 10)
+      const day = index % 10 + 1
+      return `${year}-08-${String(day).padStart(2, '0')}`
+    })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { latitude: 15.95, longitude: 97, daily: { time, river_discharge: Array(100).fill(10) } },
+      { latitude: 15.9, longitude: 97.05, daily: { time: time.slice(0, 99), river_discharge: Array(99).fill(20) } },
+    ]), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const baselines = await fetchHistoricalBaselines(
+      [{ latitude: 15.95, longitude: 97 }, { latitude: 15.9, longitude: 97.05 }],
+      '2026-08-28',
+    )
+    const requestUrl = new URL(fetchMock.mock.calls[0][0])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requestUrl.searchParams.get('latitude')).toBe('15.95,15.9')
+    expect(requestUrl.searchParams.get('longitude')).toBe('97,97.05')
+    expect(baselines.map(candidate => candidate.status)).toEqual(['available', 'unavailable'])
+    expect(baselines[0]).toMatchObject({ distinctYears: 10, validSampleCount: 100 })
+    expect(baselines[1]).toMatchObject({ validSampleCount: 99 })
   })
 })

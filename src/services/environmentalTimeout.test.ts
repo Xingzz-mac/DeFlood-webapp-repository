@@ -96,6 +96,10 @@ function river(lastSuccessfulAt = now): RiverData {
       p25: { available: true, complete: true, validDays: 7, expectedDays: 7 },
       p75: { available: true, complete: true, validDays: 7, expectedDays: 7 },
     },
+    communityCoordinate: { latitude, longitude },
+    riverModelCoordinate: { latitude, longitude },
+    riverModelDistanceKm: 0,
+    riverLookupMode: 'EXACT_QUERY',
     metadata: metadata(lastSuccessfulAt),
   }
 }

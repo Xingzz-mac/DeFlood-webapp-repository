@@ -47,6 +47,10 @@ const river: RiverData = {
     p25: { available: true, complete: false, validDays: 2, expectedDays: 7 },
     p75: { available: true, complete: false, validDays: 2, expectedDays: 7 },
   },
+  communityCoordinate: { latitude: 16.5, longitude: 95 },
+  riverModelCoordinate: { latitude: 16.525002, longitude: 95.025024 },
+  riverModelDistanceKm: 3.8,
+  riverLookupMode: 'EXACT_QUERY',
   metadata,
 }
 
@@ -96,12 +100,41 @@ describe('RiverDischargeChart', () => {
     expect(text).toContain('Historical 95th percentile reference: 95.0 m³/s')
     expect(text).toContain('Percentile 87.4')
     expect(text).toContain('Cached source')
+    expect(text).toContain('River model location: GloFAS grid point 3.8 km from the community.')
+    expect(text).toContain('The exact community query returned this modeled grid location.')
+    expect(text).toContain('approximately 5 km river grid')
     expect(text).toContain('not a local gauge measurement')
     expect(text).not.toContain('river height')
 
     const hoverTargets = renderer!.root.findAll(node => node.props.role === 'button')
     await act(async () => hoverTargets[hoverTargets.length - 1].props.onMouseEnter())
     expect(pageText(renderer!.toJSON())).toContain('Forecast p25–p75: 42.0 – 58.0 m³/s')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('shows nearby GloFAS provenance without describing it as an exact river or gauge', async () => {
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(
+        <RiverDischargeChart
+          river={{
+            ...river,
+            riverModelCoordinate: { latitude: 16.55, longitude: 95 },
+            riverModelDistanceKm: 6.2,
+            riverLookupMode: 'NEARBY_SEARCH',
+          }}
+          historicalBaseline={historicalBaseline}
+          riverPercentile={87.4}
+          trendLabel="rising"
+          loading={false}
+        />,
+      )
+    })
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain('River model location: nearest usable GloFAS point found by nearby search, 6.2 km from the community.')
+    expect(text).toContain('nearby modeled river point')
+    expect(text).not.toContain("community's exact river")
+    expect(text).toContain('not a local gauge measurement')
     await act(async () => renderer?.unmount())
   })
 

@@ -108,6 +108,10 @@ export function buildRiskEvidence(
     ])),
     river: {
       primaryUsable: isPrimaryRiverUsable(environmental.river.days),
+      communityCoordinate: environmental.river.communityCoordinate,
+      riverModelCoordinate: environmental.river.riverModelCoordinate,
+      riverModelDistanceKm: finiteOrNull(environmental.river.riverModelDistanceKm),
+      riverLookupMode: environmental.river.riverLookupMode,
       primary: nearTermDays.map(day => ({
         date: day.date,
         discharge: finiteOrNull(day.discharge),

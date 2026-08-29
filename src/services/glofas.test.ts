@@ -6,6 +6,7 @@ import {
   computeThreeDayPeak,
   computeNearTermTrend,
   fetchRiverDischarge,
+  fetchRiverDischargeCandidates,
   isPrimaryRiverUsable,
 } from './glofas'
 
@@ -133,5 +134,54 @@ describe('GloFAS primary and ensemble usability', () => {
     expect(result.recentDays?.map(day => day.date)).toEqual(dates.slice(0, 7))
     expect(result.days.map(day => day.date)).toEqual(dates.slice(7, 14))
     expect(result.peakDate).toBe('2026-08-10')
+  })
+
+  it('records an exact-query lookup separately from the snapped returned model coordinate', async () => {
+    const dates = Array.from({ length: 14 }, (_, index) => `2026-08-${String(index + 1).padStart(2, '0')}`)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      latitude: 16.525002,
+      longitude: 95.025024,
+      daily: {
+        time: dates,
+        river_discharge: Array.from({ length: 14 }, (_, index) => index + 1),
+      },
+    }), { status: 200 })))
+
+    const result = await fetchRiverDischarge(16.5, 95)
+
+    expect(result.riverLookupMode).toBe('EXACT_QUERY')
+    expect(result.communityCoordinate).toEqual({ latitude: 16.5, longitude: 95 })
+    expect(result.riverModelCoordinate).toEqual({ latitude: 16.525002, longitude: 95.025024 })
+    expect(result.riverModelDistanceKm).toBeGreaterThan(0)
+    expect(result.riverModelDistanceKm).toBeCloseTo(3.84, 1)
+  })
+
+  it('batches nearby coordinates in one request and preserves null primary values', async () => {
+    const dates = Array.from({ length: 14 }, (_, index) => `2026-08-${String(index + 1).padStart(2, '0')}`)
+    const responseFor = (latitude: number, longitude: number, values: (number | null)[]) => ({
+      latitude,
+      longitude,
+      daily: { time: dates, river_discharge: [...Array(7).fill(1), ...values, 4, 5, 6, 7] },
+    })
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      responseFor(15.95, 97, [10, null, 12]),
+      responseFor(15.9, 97.05, [20, 21, 22]),
+    ]), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const results = await fetchRiverDischargeCandidates(
+      [{ latitude: 15.95, longitude: 97 }, { latitude: 15.9, longitude: 97.05 }],
+      { latitude: 15.9, longitude: 97 },
+    )
+    const requestUrl = new URL(fetchMock.mock.calls[0][0])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requestUrl.searchParams.get('latitude')).toBe('15.95,15.9')
+    expect(requestUrl.searchParams.get('longitude')).toBe('97,97.05')
+    expect(results).toHaveLength(2)
+    expect(results[0].days.slice(0, 3).map(day => day.discharge)).toEqual([10, null, 12])
+    expect(results[0].primaryUsable).toBe(true)
+    expect(results[0].riverLookupMode).toBe('NEARBY_SEARCH')
+    expect(results[0].riverModelCoordinate).toEqual({ latitude: 15.95, longitude: 97 })
   })
 })

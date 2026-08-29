@@ -9,16 +9,11 @@ import {
 } from 'react'
 import { useCommunity } from './CommunityContext'
 import { useEnvironmentalData } from '../hooks/useEnvironmentalData'
-import {
-  fetchHistoricalBaseline,
-  historicalErrorBaseline,
-  monthFromForecastDate,
-  readHistoricalBaseline,
-} from '../services/historicalGlofas'
+import { resolveRiverEvidence, type RiverEvidenceSelection } from '../services/riverEvidence'
 import { calculateRisk } from '../services/riskEngine'
 import { calculateRiskWithCache } from '../services/riskCache'
 import { RISK_RECALCULATION_INTERVAL_MS } from '../services/riskConfig'
-import type { HistoricalBaseline, RiskResult } from '../services/riskTypes'
+import type { RiskResult } from '../services/riskTypes'
 import type { EnvironmentalData } from '../services/types'
 
 export interface RiskContextValue extends RiskResult {
@@ -34,12 +29,10 @@ const RiskViewContext = createContext<RiskContextValue | null>(null)
 export function RiskProvider({ children }: { children: ReactNode }) {
   const { community } = useCommunity()
   const environmental = useEnvironmentalData(community.latitude, community.longitude)
-  const forecastDate = environmental.data?.river.days[0]?.date ?? null
-  const calendarMonth = forecastDate ? monthFromForecastDate(forecastDate) : null
-  const [historicalBaseline, setHistoricalBaseline] = useState<HistoricalBaseline | null>(null)
-  const [historicalLoading, setHistoricalLoading] = useState(false)
+  const [riverSelection, setRiverSelection] = useState<RiverEvidenceSelection | null>(null)
+  const [riverSelectionLoading, setRiverSelectionLoading] = useState(false)
   const [riskClockTick, setRiskClockTick] = useState(0)
-  const historicalSequenceRef = useRef(0)
+  const riverSequenceRef = useRef(0)
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -49,74 +42,73 @@ export function RiskProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const sequence = ++historicalSequenceRef.current
-    if (!forecastDate || calendarMonth === null || !environmental.data) {
-      setHistoricalBaseline(null)
-      setHistoricalLoading(false)
+    const sequence = ++riverSequenceRef.current
+    if (!environmental.data) {
+      setRiverSelection(null)
+      setRiverSelectionLoading(false)
       return
     }
 
-    const cached = readHistoricalBaseline(
-      community.latitude,
-      community.longitude,
-      calendarMonth,
+    const controller = new AbortController()
+    setRiverSelection(null)
+    setRiverSelectionLoading(true)
+    resolveRiverEvidence(
+      { latitude: community.latitude, longitude: community.longitude },
+      environmental.data.river,
+      controller.signal,
     )
-    if (cached) {
-      setHistoricalBaseline(cached)
-      setHistoricalLoading(false)
-      return
-    }
-
-    setHistoricalBaseline(null)
-    setHistoricalLoading(true)
-    fetchHistoricalBaseline(community.latitude, community.longitude, forecastDate)
-      .then(baseline => {
-        if (sequence !== historicalSequenceRef.current) return
-        setHistoricalBaseline(baseline)
-        setHistoricalLoading(false)
+      .then(selection => {
+        if (sequence !== riverSequenceRef.current) return
+        setRiverSelection(selection)
+        setRiverSelectionLoading(false)
       })
-      .catch(reason => {
-        if (sequence !== historicalSequenceRef.current) return
-        const message = reason instanceof Error ? reason.message : 'Historical GloFAS request failed'
-        setHistoricalBaseline(historicalErrorBaseline(
-          community.latitude,
-          community.longitude,
-          calendarMonth,
-          message,
-        ))
-        setHistoricalLoading(false)
+      .catch(() => {
+        if (sequence !== riverSequenceRef.current) return
+        setRiverSelection(null)
+        setRiverSelectionLoading(false)
       })
 
     return () => {
-      historicalSequenceRef.current += 1
+      controller.abort()
+      riverSequenceRef.current += 1
     }
   }, [
-    calendarMonth,
     community.latitude,
     community.longitude,
     environmental.data?.fingerprint,
-    forecastDate,
+    environmental.data?.retrievedAt,
   ])
+
+  const alignedEnvironmental = useMemo(() => {
+    if (!environmental.data || !riverSelection) return environmental.data
+    const selectedCommunity = riverSelection.river.communityCoordinate
+    if (
+      selectedCommunity.latitude !== community.latitude
+      || selectedCommunity.longitude !== community.longitude
+    ) return environmental.data
+    return { ...environmental.data, river: riverSelection.river }
+  }, [community.latitude, community.longitude, environmental.data, riverSelection])
+  const historicalBaseline = riverSelection?.historicalBaseline ?? null
 
   const risk = useMemo(() => {
     void riskClockTick
     const input = {
-      environmental: environmental.data,
+      environmental: alignedEnvironmental,
       historicalBaseline,
       nowMs: Date.now(),
     }
-    return historicalLoading
+    return riverSelectionLoading
       ? calculateRisk(input)
       : calculateRiskWithCache(input)
-  }, [environmental.data, historicalBaseline, historicalLoading, riskClockTick])
+  }, [alignedEnvironmental, historicalBaseline, riverSelectionLoading, riskClockTick])
 
   const historicalError = historicalBaseline?.status === 'error'
     ? historicalBaseline.error
     : null
   const value: RiskContextValue = {
     ...risk,
-    environmentalData: environmental.data,
-    loading: environmental.loading || historicalLoading,
+    environmentalData: alignedEnvironmental,
+    loading: environmental.loading || riverSelectionLoading,
     error: environmental.error ?? historicalError,
     refresh: environmental.refresh,
   }

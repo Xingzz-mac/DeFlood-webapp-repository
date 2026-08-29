@@ -4,6 +4,7 @@ import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
 import { riskMeaning, riskNextStep } from '../services/riskPresentation'
 import { calculateFreshness } from '../services/riskScoring'
+import { riverModelLocationText } from '../services/riverSpatial'
 import type {
   ConfidenceBreakdownItem,
   HazardBreakdownItem,
@@ -157,6 +158,12 @@ function RiverCard({ river }: { river: RiverData }) {
       <p className="mt-3 text-xs text-gray-500">
         Primary near-term availability: {river.primaryValidDays}/3 valid river_discharge days.
       </p>
+      <div className="mt-3 rounded-xl bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
+        <div className="font-semibold">{riverModelLocationText(river)}</div>
+        <div className="mt-1 text-blue-800">
+          GloFAS uses an approximately 5 km river grid. A nearby modeled river point may be used when the exact community coordinate has no usable discharge series.
+        </div>
+      </div>
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-xs">
           <thead className="text-gray-500">

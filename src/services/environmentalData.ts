@@ -72,7 +72,11 @@ function errorWeather(
   }
 }
 
-function errorRiver(coordinateFingerprint: string, error: string): RiverData {
+function errorRiver(
+  coordinateFingerprint: string,
+  error: string,
+  communityCoordinate: { latitude: number; longitude: number },
+): RiverData {
   const days: RiverData['days'] = []
   return {
     unit: 'm³/s',
@@ -83,6 +87,10 @@ function errorRiver(coordinateFingerprint: string, error: string): RiverData {
     peakDate: null,
     trend: 'unavailable',
     ensembleAvailability: buildEnsembleAvailability(days),
+    communityCoordinate,
+    riverModelCoordinate: null,
+    riverModelDistanceKm: null,
+    riverLookupMode: 'UNAVAILABLE',
     metadata: errorMetadata(coordinateFingerprint, error),
   }
 }
@@ -311,7 +319,11 @@ function cachedRiverOrExpired(
     }
   }
   return {
-    ...errorRiver(coordinateFingerprint, 'Cached river forecast is unusable or expired'),
+    ...errorRiver(
+      coordinateFingerprint,
+      'Cached river forecast is unusable or expired',
+      cached.communityCoordinate,
+    ),
     metadata: expiredMetadata(
       cached.metadata,
       coordinateFingerprint,
@@ -468,6 +480,7 @@ export async function fetchEnvironmentalData(
     : errorRiver(
         coordinateFingerprint,
         reasonMessage(riverResult.reason, 'GloFAS fetch failed'),
+        { latitude, longitude },
       )
   const currentTerrain = elevationResult.status === 'fulfilled'
     ? elevationResult.value

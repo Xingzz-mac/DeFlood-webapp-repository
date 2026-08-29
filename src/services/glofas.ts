@@ -5,9 +5,12 @@ import type {
   SourceMetadata,
   RiverEnsembleAvailability,
   EnsembleFieldAvailability,
+  GeographicCoordinate,
+  RiverLookupMode,
 } from './types'
 import { FLOOD_BASE, RIVER_FORECAST_DAYS, RIVER_PAST_DAYS } from './config'
 import { coordFingerprint } from './cache'
+import { haversineDistanceKm } from './riverSpatial'
 
 const DAILY_VARS = [
   'river_discharge',
@@ -28,7 +31,9 @@ export interface FloodDaily {
   river_discharge_p75?: (number | null)[]
 }
 
-interface FloodResponse {
+export interface FloodResponse {
+  latitude?: number
+  longitude?: number
   daily?: FloodDaily
   error?: boolean
   reason?: string
@@ -155,25 +160,30 @@ export function buildEnsembleAvailability(days: RiverDay[]): RiverEnsembleAvaila
   }
 }
 
-export async function fetchRiverDischarge(
-  latitude: number,
-  longitude: number,
-  signal?: AbortSignal,
-): Promise<RiverData> {
-  const coordinateFingerprint = coordFingerprint(latitude, longitude)
-  const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    daily: DAILY_VARS,
-    past_days: String(RIVER_PAST_DAYS),
-    forecast_days: String(RIVER_FORECAST_DAYS),
-    timezone: 'auto',
-  })
-  const response = await fetch(`${FLOOD_BASE}?${params}`, { signal })
-  if (!response.ok) throw new Error(`Flood API returned ${response.status}`)
-  const data: FloodResponse = await response.json()
-  if (data.error) throw new Error(data.reason ?? 'Flood API error')
+function returnedCoordinate(
+  data: FloodResponse,
+  requestedCoordinate: GeographicCoordinate,
+): GeographicCoordinate {
+  return {
+    latitude: typeof data.latitude === 'number' && Number.isFinite(data.latitude)
+      ? data.latitude
+      : requestedCoordinate.latitude,
+    longitude: typeof data.longitude === 'number' && Number.isFinite(data.longitude)
+      ? data.longitude
+      : requestedCoordinate.longitude,
+  }
+}
 
+export function buildRiverData(
+  data: FloodResponse,
+  requestedCoordinate: GeographicCoordinate,
+  communityCoordinate: GeographicCoordinate,
+  lookupMode: Exclude<RiverLookupMode, 'UNAVAILABLE'>,
+): RiverData {
+  const coordinateFingerprint = coordFingerprint(
+    communityCoordinate.latitude,
+    communityCoordinate.longitude,
+  )
   const { recentDays, forecastDays: days } = buildRiverSeries(data.daily)
   const validPrimaryDays = primaryRiverValidDays(days)
   const primaryUsable = isPrimaryRiverUsable(days)
@@ -188,6 +198,7 @@ export async function fetchRiverDischarge(
       ? null
       : `Primary river forecast requires at least ${PRIMARY_RIVER_REQUIRED_VALID_DAYS} valid discharge days in the first three days`
   const { peak, date } = computeThreeDayPeak(days)
+  const modelCoordinate = returnedCoordinate(data, requestedCoordinate)
 
   return {
     unit: 'm³/s',
@@ -199,6 +210,57 @@ export async function fetchRiverDischarge(
     peakDate: date,
     trend: computeNearTermTrend(days),
     ensembleAvailability: buildEnsembleAvailability(days),
+    communityCoordinate,
+    riverModelCoordinate: primaryUsable ? modelCoordinate : null,
+    riverModelDistanceKm: primaryUsable
+      ? haversineDistanceKm(communityCoordinate, modelCoordinate)
+      : null,
+    riverLookupMode: primaryUsable ? lookupMode : 'UNAVAILABLE',
     metadata: buildMetadata(status, coordinateFingerprint, error, primaryUsable),
   }
+}
+
+function requestParameters(coordinates: GeographicCoordinate[]): URLSearchParams {
+  return new URLSearchParams({
+    latitude: coordinates.map(coordinate => coordinate.latitude).join(','),
+    longitude: coordinates.map(coordinate => coordinate.longitude).join(','),
+    daily: DAILY_VARS,
+    past_days: String(RIVER_PAST_DAYS),
+    forecast_days: String(RIVER_FORECAST_DAYS),
+    timezone: coordinates.length === 1 ? 'auto' : 'GMT',
+  })
+}
+
+export async function fetchRiverDischarge(
+  latitude: number,
+  longitude: number,
+  signal?: AbortSignal,
+): Promise<RiverData> {
+  const coordinate = { latitude, longitude }
+  const params = requestParameters([coordinate])
+  const response = await fetch(`${FLOOD_BASE}?${params}`, { signal })
+  if (!response.ok) throw new Error(`Flood API returned ${response.status}`)
+  const data: FloodResponse = await response.json()
+  if (data.error) throw new Error(data.reason ?? 'Flood API error')
+
+  return buildRiverData(data, coordinate, coordinate, 'EXACT_QUERY')
+}
+
+export async function fetchRiverDischargeCandidates(
+  coordinates: GeographicCoordinate[],
+  communityCoordinate: GeographicCoordinate,
+  signal?: AbortSignal,
+): Promise<RiverData[]> {
+  if (coordinates.length === 0) return []
+  const response = await fetch(`${FLOOD_BASE}?${requestParameters(coordinates)}`, { signal })
+  if (!response.ok) throw new Error(`Flood API returned ${response.status}`)
+  const payload: FloodResponse | FloodResponse[] = await response.json()
+  const responses = Array.isArray(payload) ? payload : [payload]
+  if (responses.length !== coordinates.length) {
+    throw new Error('Flood API returned an unexpected number of coordinate results')
+  }
+  return responses.map((data, index) => {
+    if (data.error) throw new Error(data.reason ?? 'Flood API error')
+    return buildRiverData(data, coordinates[index], communityCoordinate, 'NEARBY_SEARCH')
+  })
 }

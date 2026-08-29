@@ -10,6 +10,13 @@ export type WeatherModelKey = 'aifs' | 'ifs' | 'gfs' | 'ukmo'
 
 export type RiverTrend = 'rising' | 'stable' | 'falling' | 'unavailable'
 
+export type RiverLookupMode = 'EXACT_QUERY' | 'NEARBY_SEARCH' | 'UNAVAILABLE'
+
+export interface GeographicCoordinate {
+  latitude: number
+  longitude: number
+}
+
 export interface RefreshAttemptMetadata {
   status: SourceStatus
   retrievedAt: string
@@ -83,6 +90,10 @@ export interface RiverData {
   peakDate: string | null
   trend: RiverTrend
   ensembleAvailability: RiverEnsembleAvailability
+  communityCoordinate: GeographicCoordinate
+  riverModelCoordinate: GeographicCoordinate | null
+  riverModelDistanceKm: number | null
+  riverLookupMode: RiverLookupMode
   metadata: SourceMetadata
 }
 

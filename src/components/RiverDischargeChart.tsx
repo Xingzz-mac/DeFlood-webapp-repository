@@ -6,6 +6,7 @@ import {
   type RiverOutlookPoint,
 } from '../services/riverOutlook'
 import type { RiverData } from '../services/types'
+import { riverModelLocationText } from '../services/riverSpatial'
 import { IconRefresh, IconWaves } from './Icons'
 
 interface RiverDischargeChartProps {
@@ -174,6 +175,13 @@ export default function RiverDischargeChart({
         <Metric label="3-day forecast peak" value={displayValue(river.peakDischarge)} />
         <Metric label="River trend" value={trendText(trendLabel, river.trend)} />
         <Metric label="Historical comparison" value={riverPercentile === null ? 'Unavailable' : `Percentile ${riverPercentile.toFixed(1)}`} />
+      </div>
+
+      <div className="mt-3 rounded-xl bg-blue-50 px-3 py-2.5 text-xs leading-relaxed text-blue-900">
+        <div className="font-semibold">{riverModelLocationText(river)}</div>
+        <div className="mt-1 text-blue-800">
+          GloFAS uses an approximately 5 km river grid. A nearby modeled river point may be used when the exact community coordinate has no usable discharge series.
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-600" aria-label="Chart legend">

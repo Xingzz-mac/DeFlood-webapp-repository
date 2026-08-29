@@ -16,6 +16,7 @@ const environmentalServiceMocks = vi.hoisted(() => ({
 
 const historicalServiceMocks = vi.hoisted(() => ({
   fetchHistoricalBaseline: vi.fn(),
+  fetchHistoricalBaselines: vi.fn(),
   historicalErrorBaseline: vi.fn(),
   monthFromForecastDate: vi.fn(() => 8),
   readHistoricalBaseline: vi.fn(),
@@ -92,6 +93,10 @@ function environmentalFixture(): EnvironmentalData {
         p25: { available: true, complete: false, validDays: 3, expectedDays: 7 },
         p75: { available: true, complete: false, validDays: 3, expectedDays: 7 },
       },
+      communityCoordinate: { latitude: 16.5, longitude: 95 },
+      riverModelCoordinate: { latitude: 16.5, longitude: 95 },
+      riverModelDistanceKm: 0,
+      riverLookupMode: 'EXACT_QUERY',
       metadata: metadata(),
     },
     terrain: { unit: 'm', elevation: 8, metadata: metadata() },
@@ -133,6 +138,7 @@ describe('RiskProvider freshness clock', () => {
     environmentalServiceMocks.getCachedEnvData.mockReset().mockReturnValue(environmental)
     environmentalServiceMocks.loadCachedOrStale.mockReset().mockReturnValue(null)
     historicalServiceMocks.fetchHistoricalBaseline.mockReset()
+    historicalServiceMocks.fetchHistoricalBaselines.mockReset()
     historicalServiceMocks.historicalErrorBaseline.mockReset()
     historicalServiceMocks.monthFromForecastDate.mockClear()
     historicalServiceMocks.readHistoricalBaseline.mockReset().mockReturnValue(historicalFixture())

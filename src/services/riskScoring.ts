@@ -34,6 +34,7 @@ import type {
 } from './riskTypes'
 import type { EnvironmentalData, RiverDay, SourceMetadata } from './types'
 import { WEATHER_MODEL_KEYS } from './weatherModels'
+import { riverSpatialQualityFactor } from './riverSpatial'
 
 export function clamp(value: number, min = 0, max = 100): number {
   return Math.min(max, Math.max(min, value))
@@ -179,7 +180,7 @@ export function calculateCompleteness(
     isPrimaryRiverUsable(environmental.river.days),
     environmental.river.metadata.cached,
     CACHED_SOURCE_COMPLETENESS_FACTOR,
-  )
+  ) * riverSpatialQualityFactor(environmental.river)
   const history = completenessCredit(
     historical?.status === 'available',
     historical?.cached ?? false,
