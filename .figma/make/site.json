@@ -1,5 +1,13 @@
 {
-  "description": "Streamline your workflow with an intuitive platform designed to enhance productivity and simplify task management for professionals.",
+  "title": "DeFlood.AI — Flood Risk & Evacuation Planning",
+  "description": "Explainable flood-risk assessment and evacuation-planning prototype using live environmental evidence.",
+  "language": "en",
+  "icons": {
+    "icon": "/src/assets/branding/deflood-app-icon.png"
+  },
+  "openGraph": {
+    "image": "/src/assets/branding/deflood-logo-dark.png"
+  },
   "robots": {
     "index": false
   },

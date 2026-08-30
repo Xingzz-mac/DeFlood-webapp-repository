@@ -137,7 +137,7 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
 
     const text = pageText(renderer!.toJSON())
     expect(text).toContain(
-      'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.',
+      'Planning data changed while DeFlood.AI was responding. Please ask again using the latest data.',
     )
     expect(text).not.toContain('Old-context result must be discarded.')
     expect(text).not.toContain('AI-prioritized verified actions')
@@ -169,7 +169,7 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
     expect(text).toContain('AI-prioritized verified actions')
     expect(text).toContain(result.summary)
     expect(text).toContain(trustedAction.text)
-    expect(text).not.toContain('Planning data changed while DeFlood AI was responding.')
+    expect(text).not.toContain('Planning data changed while DeFlood.AI was responding.')
     await act(async () => renderer?.unmount())
   })
 

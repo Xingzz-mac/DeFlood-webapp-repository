@@ -4,6 +4,7 @@ import type { CommunityData } from '../context/CommunityContext'
 import { calculateEvacuationPlan } from '../services/evacuationEngine'
 import {
   buildEvacuationChatTrustedFacts,
+  EVACUATION_CHAT_CONCISE_FACT_LIMIT,
   EVACUATION_CHAT_CONFUSION_RESPONSE,
   EVACUATION_CHAT_FILLER_RESPONSE,
   EVACUATION_CHAT_RESPONSE_LEADS,
@@ -93,7 +94,7 @@ function renderChat(
   )
 }
 
-describe('Ask DeFlood AI interface', () => {
+describe('Ask DeFlood.AI interface', () => {
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   })
@@ -191,7 +192,7 @@ describe('Ask DeFlood AI interface', () => {
     expect(text).toContain(expectedResponse)
     expect(text).toContain('Handled locally')
     expect(text).not.toContain('That information is not available')
-    expect(text).not.toContain('DeFlood AI is temporarily unavailable')
+    expect(text).not.toContain('DeFlood.AI is temporarily unavailable')
     expect(requester).not.toHaveBeenCalled()
     await act(async () => renderer?.unmount())
   })
@@ -305,6 +306,80 @@ describe('Ask DeFlood AI interface', () => {
     expect(text).toContain('Verified information')
     expect(text).toContain('AI-selected verified response')
     expect(text).not.toContain('That information is not available')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('keeps an ordinary status response concise and expands verified details without another request', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const trustedFacts = buildEvacuationChatTrustedFacts(risk, currentCommunity, plan)
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'STATUS',
+      facts: trustedFacts,
+      actions: [],
+      missingInformation: [],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, "what's happening right now")
+
+    expect(requester).toHaveBeenCalledTimes(1)
+    expect((requester.mock.calls[0]?.[0] as EvacuationChatPayload).factSelectionGuidance).toMatchObject({
+      detailLevel: 'CONCISE',
+      maximumFactIds: EVACUATION_CHAT_CONCISE_FACT_LIMIT,
+    })
+    expect(renderer!.root.findAllByType('li')).toHaveLength(EVACUATION_CHAT_CONCISE_FACT_LIMIT)
+    const expandButton = renderer!.root.findAllByType('button')
+      .find(button => button.props.children === 'Show all verified details')!
+    expect(expandButton.props['aria-expanded']).toBe(false)
+
+    await act(async () => expandButton.props.onClick())
+
+    expect(requester).toHaveBeenCalledTimes(1)
+    expect(renderer!.root.findAllByType('li')).toHaveLength(trustedFacts.length)
+    const collapseButton = renderer!.root.findAllByType('button')
+      .find(button => button.props.children === 'Show less')!
+    expect(collapseButton.props['aria-expanded']).toBe(true)
+
+    await act(async () => collapseButton.props.onClick())
+    expect(requester).toHaveBeenCalledTimes(1)
+    expect(renderer!.root.findAllByType('li')).toHaveLength(EVACUATION_CHAT_CONCISE_FACT_LIMIT)
+    await act(async () => renderer?.unmount())
+  })
+
+  it('shows the broader verified set by default for an explicit full-details request', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const trustedFacts = buildEvacuationChatTrustedFacts(risk, currentCommunity, plan)
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'STATUS',
+      facts: trustedFacts,
+      actions: [],
+      missingInformation: [],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'Show me all verified details.')
+
+    expect(requester).toHaveBeenCalledTimes(1)
+    expect((requester.mock.calls[0]?.[0] as EvacuationChatPayload).factSelectionGuidance).toMatchObject({
+      detailLevel: 'FULL',
+      maximumFactIds: null,
+    })
+    expect(renderer!.root.findAllByType('li')).toHaveLength(trustedFacts.length)
+    expect(pageText(renderer!.toJSON())).toContain('Show less')
     await act(async () => renderer?.unmount())
   })
 
@@ -488,7 +563,7 @@ describe('Ask DeFlood AI interface', () => {
 
     const text = pageText(renderer!.toJSON())
     expect(text).toContain(
-      'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.',
+      'Planning data changed while DeFlood.AI was responding. Please ask again using the latest data.',
     )
     expect(text).not.toContain(oldFact.text)
     expect(text).not.toContain(oldAction.text)
@@ -510,7 +585,7 @@ describe('Ask DeFlood AI interface', () => {
 
     expect(requester).toHaveBeenCalledTimes(1)
     expect(pageText(renderer!.toJSON())).toContain(
-      'DeFlood AI is temporarily unavailable. The verified planning information above is still available.',
+      'DeFlood.AI is temporarily unavailable. The verified planning information above is still available.',
     )
     expect(renderer!.root.findByType('textarea').props.value).toBe('Can you explain the plan?')
     expect(JSON.stringify(plan)).toBe(before)

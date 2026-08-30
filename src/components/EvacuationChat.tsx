@@ -11,7 +11,9 @@ import {
   buildEvacuationChatPayload,
   buildEvacuationChatTrustedFacts,
   capConversationHistory,
+  EVACUATION_CHAT_CONCISE_FACT_LIMIT,
   EVACUATION_CHAT_RESPONSE_LEADS,
+  isEvacuationChatFullDetailsRequest,
   localEvacuationChatResponse,
   planningContextFingerprint,
   requestEvacuationChat,
@@ -24,6 +26,7 @@ import {
 } from '../services/evacuationChat'
 import type { AllowedAction, EvacuationPlanResult } from '../services/evacuationTypes'
 import type { RiskResult } from '../services/riskTypes'
+import defloodShield from '../assets/branding/deflood-shield.png'
 
 type ChatRequester = (
   payload: EvacuationChatPayload,
@@ -40,11 +43,13 @@ interface EvacuationChatProps {
 
 type ResponseSource = 'LOCAL' | 'VERIFIED_DATA' | 'AI_SELECTED_VERIFIED'
 
-const RESPONSE_SOURCE_LABELS: Readonly<Record<ResponseSource, string>> = {
-  LOCAL: 'Handled locally',
-  VERIFIED_DATA: 'Verified-data response',
-  AI_SELECTED_VERIFIED: 'AI-selected verified response',
-}
+const RESPONSE_SOURCE_LABELS: Readonly<Record<ResponseSource, string>> | null = import.meta.env.DEV
+  ? {
+      LOCAL: 'Handled locally',
+      VERIFIED_DATA: 'Verified-data response',
+      AI_SELECTED_VERIFIED: 'AI-selected verified response',
+    }
+  : null
 
 interface DisplayMessage {
   id: number
@@ -56,11 +61,26 @@ interface DisplayMessage {
   error: boolean
   responseSource: ResponseSource | null
   includeInHistory: boolean
+  detailsExpanded: boolean
 }
 
-const UNAVAILABLE_MESSAGE = 'DeFlood AI is temporarily unavailable. The verified planning information above is still available.'
+const UNAVAILABLE_MESSAGE = 'DeFlood.AI is temporarily unavailable. The verified planning information above is still available.'
 const NO_VERIFIED_ANSWER_MESSAGE = 'That information is not available in the current verified DeFlood data.'
-const STALE_RESPONSE_MESSAGE = 'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.'
+const STALE_RESPONSE_MESSAGE = 'Planning data changed while DeFlood.AI was responding. Please ask again using the latest data.'
+
+function factDisplayPriority(fact: EvacuationChatTrustedFact, hasCurrentHazard: boolean): number {
+  if (fact.id === 'risk.current-hazard') return 0
+  if (fact.id === 'risk.data-confidence') return 1
+  if (fact.id.startsWith('risk.supporting-')) {
+    if (/\b(?:models?|agreement|usable rainfall)\b/i.test(fact.text)) return 3
+    const position = Number(fact.id.split('-').at(-1))
+    return Number.isFinite(position) && position <= 2 ? 2 + position / 10 : 7 + (position || 0) / 10
+  }
+  if (fact.id === 'planning.status') return 4
+  if (fact.id === 'planning.missing-information' || fact.id === 'planning.resource-warnings') return 5
+  if (fact.id === 'risk.status') return hasCurrentHazard ? 6 : 0
+  return 8
+}
 
 function revalidateResult(
   result: EvacuationChatResult,
@@ -75,7 +95,13 @@ function revalidateResult(
     if (!trusted) return []
     seenFacts.add(fact.id)
     return [trusted]
-  })
+  }).map((fact, index) => ({ fact, index }))
+    .sort((left, right) => {
+      const hasCurrentHazard = currentFactMap.has('risk.current-hazard')
+      return factDisplayPriority(left.fact, hasCurrentHazard) - factDisplayPriority(right.fact, hasCurrentHazard)
+        || left.index - right.index
+    })
+    .map(({ fact }) => fact)
   const currentActions = new Map(currentPlan.allowedActions.map(action => [action.id, action]))
   const seenActions = new Set<string>()
   const actions = result.actions.flatMap(action => {
@@ -121,7 +147,7 @@ export default function EvacuationChat({
   const addMessage = (
     role: DisplayMessage['role'],
     content: string,
-    extras: Partial<Pick<DisplayMessage, 'facts' | 'actions' | 'missingInformation' | 'error' | 'responseSource' | 'includeInHistory'>> = {},
+    extras: Partial<Pick<DisplayMessage, 'facts' | 'actions' | 'missingInformation' | 'error' | 'responseSource' | 'includeInHistory' | 'detailsExpanded'>> = {},
   ): DisplayMessage => ({
     id: nextMessageId.current++,
     role,
@@ -132,6 +158,7 @@ export default function EvacuationChat({
     error: extras.error ?? false,
     responseSource: extras.responseSource ?? null,
     includeInHistory: extras.includeInHistory ?? true,
+    detailsExpanded: extras.detailsExpanded ?? false,
   })
 
   useEffect(() => {
@@ -184,6 +211,7 @@ export default function EvacuationChat({
       return
     }
     loadingRef.current = true
+    const fullDetailsRequested = isEvacuationChatFullDetailsRequest(question)
     const requestFingerprint = contextFingerprint
     const history = historyForRequest()
     const payload = buildEvacuationChatPayload(question, history, risk, community, plan)
@@ -215,6 +243,7 @@ export default function EvacuationChat({
         responseSource: hasSelectedVerifiedContent
           ? 'AI_SELECTED_VERIFIED'
           : 'VERIFIED_DATA',
+        detailsExpanded: fullDetailsRequested,
       })])
     } catch {
       setMessages(current => [...current, addMessage('assistant', UNAVAILABLE_MESSAGE, { error: true })])
@@ -241,16 +270,27 @@ export default function EvacuationChat({
     setDraft('')
   }
 
+  const toggleVerifiedDetails = (messageId: number) => {
+    setMessages(current => current.map(message => (
+      message.id === messageId
+        ? { ...message, detailsExpanded: !message.detailsExpanded }
+        : message
+    )))
+  }
+
   const demoActive = risk.engineVersion.startsWith('deflood-dev-scenario')
 
   return (
     <section className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-gray-900">Ask DeFlood AI</h2>
-          <p className="mt-1 max-w-2xl text-sm text-gray-600">
-            Ask questions about the current flood risk, community resources, missing information, or verified planning actions.
-          </p>
+        <div className="flex items-start gap-3">
+          <img src={defloodShield} alt="" className="h-9 w-9 shrink-0 object-contain" aria-hidden="true" />
+          <div>
+            <h2 className="font-semibold text-gray-900">Ask DeFlood.AI</h2>
+            <p className="mt-1 max-w-2xl text-sm text-gray-600">
+              Ask questions about the current flood risk, community resources, missing information, or verified planning actions.
+            </p>
+          </div>
         </div>
         {messages.length > 0 && (
           <button
@@ -277,8 +317,8 @@ export default function EvacuationChat({
 
       <div
         aria-live="polite"
-        aria-label="DeFlood AI conversation"
-        className="mt-4 max-h-80 min-h-48 space-y-3 overflow-y-auto rounded-xl border border-indigo-100 bg-white p-4"
+        aria-label="DeFlood.AI conversation"
+        className="mt-4 max-h-96 min-h-48 space-y-4 overflow-y-auto rounded-xl border border-indigo-100 bg-slate-50/70 p-3 sm:p-4"
       >
         {messages.length === 0 && (
           <div>
@@ -310,47 +350,61 @@ export default function EvacuationChat({
             )
           }
           const user = message.role === 'user'
+          const hasAdditionalFacts = message.facts.length > EVACUATION_CHAT_CONCISE_FACT_LIMIT
+          const visibleFacts = message.detailsExpanded
+            ? message.facts
+            : message.facts.slice(0, EVACUATION_CHAT_CONCISE_FACT_LIMIT)
           return (
             <div key={message.id} className={`flex ${user ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm ${
+              <div className={`max-w-[94%] rounded-2xl px-4 py-3 text-base leading-7 sm:max-w-[86%] ${
                 user
                   ? 'bg-[#1e3a5f] text-white'
                   : message.error
                     ? 'border border-amber-200 bg-amber-50 text-amber-950'
-                    : 'bg-gray-100 text-gray-800'
+                    : 'border border-slate-200 bg-white text-slate-800 shadow-sm'
               }`}>
-                <div className="mb-1 text-[11px] font-bold uppercase tracking-wide opacity-70">
-                  {user ? 'You' : 'DeFlood AI'}
+                <div className="mb-1 text-sm font-semibold opacity-70">
+                  {user ? 'You' : 'DeFlood.AI'}
                 </div>
-                <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                {!user && showResponseSourceDiagnostics && message.responseSource && (
+                <p className="whitespace-pre-wrap">{message.content}</p>
+                {!user && import.meta.env.DEV && showResponseSourceDiagnostics && message.responseSource && (
                   <div
                     data-testid="deflood-response-source"
                     className="mt-2 text-[10px] font-medium text-gray-500"
                   >
-                    {RESPONSE_SOURCE_LABELS[message.responseSource]}
+                    {RESPONSE_SOURCE_LABELS?.[message.responseSource]}
                   </div>
                 )}
                 {message.facts.length > 0 && (
-                  <div className="mt-3 border-t border-gray-300/60 pt-3">
-                    <div className="text-xs font-bold text-gray-700">Verified information</div>
-                    <ul className="mt-2 space-y-1.5 text-xs">
-                      {message.facts.map(fact => <li key={fact.id}>• {fact.text}</li>)}
+                  <div className="mt-4 border-t border-slate-200 pt-3">
+                    <div className="text-sm font-semibold text-slate-700">Verified information</div>
+                    <ul className="mt-2 list-disc space-y-2 pl-5 text-[15px] leading-6">
+                      {visibleFacts.map(fact => <li key={fact.id}>{fact.text}</li>)}
                     </ul>
+                    {hasAdditionalFacts && (
+                      <button
+                        type="button"
+                        onClick={() => toggleVerifiedDetails(message.id)}
+                        aria-expanded={message.detailsExpanded}
+                        className="mt-3 rounded-md text-sm font-semibold text-indigo-700 underline-offset-4 hover:underline"
+                      >
+                        {message.detailsExpanded ? 'Show less' : 'Show all verified details'}
+                      </button>
+                    )}
                   </div>
                 )}
                 {message.actions.length > 0 && (
-                  <div className="mt-3 border-t border-gray-300/60 pt-3">
-                    <div className="text-xs font-bold text-gray-700">Verified actions</div>
-                    <ul className="mt-2 space-y-1.5 text-xs">
-                      {message.actions.map(action => <li key={action.id}>• {action.text}</li>)}
+                  <div className="mt-4 border-t border-slate-200 pt-3">
+                    <div className="text-sm font-semibold text-slate-700">Verified actions</div>
+                    <ul className="mt-2 list-disc space-y-2 pl-5 text-[15px] leading-6">
+                      {message.actions.map(action => <li key={action.id}>{action.text}</li>)}
                     </ul>
                   </div>
                 )}
                 {message.missingInformation.length > 0 && (
-                  <div className="mt-3 border-t border-gray-300/60 pt-3 text-xs text-gray-600">
-                    <div className="font-bold">Still unknown</div>
-                    <div className="mt-1">{message.missingInformation.join(' · ')}</div>
+                  <div className="mt-4 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-600">
+                    <div className="font-semibold text-slate-700">Still unknown</div>
+                    <div className="mt-1.5">{message.missingInformation.join(' · ')}</div>
                   </div>
                 )}
               </div>
@@ -359,14 +413,14 @@ export default function EvacuationChat({
         })}
 
         {loading && (
-          <div className="text-sm text-indigo-700">DeFlood AI is thinking…</div>
+          <div className="text-sm text-indigo-700">DeFlood.AI is thinking…</div>
         )}
         <div ref={messageEndRef} />
       </div>
 
       <form onSubmit={handleSubmit} className="mt-3 flex items-end gap-2">
         <div className="flex-1">
-          <label htmlFor="deflood-chat-message" className="sr-only">Message DeFlood AI</label>
+          <label htmlFor="deflood-chat-message" className="sr-only">Message DeFlood.AI</label>
           <textarea
             id="deflood-chat-message"
             value={draft}

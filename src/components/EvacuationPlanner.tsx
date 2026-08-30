@@ -20,7 +20,7 @@ interface EvacuationPlannerProps {
   aiRequester?: typeof requestEvacuationAiPlan
 }
 
-const STALE_AI_PLAN_MESSAGE = 'Planning data changed while DeFlood AI was responding. Please ask again using the latest data.'
+const STALE_AI_PLAN_MESSAGE = 'Planning data changed while DeFlood.AI was responding. Please ask again using the latest data.'
 
 function displayNumber(value: number | null): string {
   return value === null ? 'Unknown' : value.toLocaleString()

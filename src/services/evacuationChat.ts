@@ -7,6 +7,7 @@ import type {
 import type { RiskResult } from './riskTypes'
 
 export const EVACUATION_CHAT_HISTORY_LIMIT = 10
+export const EVACUATION_CHAT_CONCISE_FACT_LIMIT = 6
 
 export const EVACUATION_CHAT_RESPONSE_TYPES = [
   'GREETING',
@@ -88,6 +89,11 @@ export interface EvacuationChatPayload {
   shelterGrounding: EvacuationChatShelterGrounding
   trustedFacts: EvacuationChatTrustedFact[]
   allowedActions: Pick<AllowedAction, 'id' | 'text'>[]
+  factSelectionGuidance: {
+    detailLevel: 'CONCISE' | 'FULL'
+    maximumFactIds: number | null
+    instruction: string
+  }
 }
 
 export interface EvacuationChatResult {
@@ -150,6 +156,16 @@ export function localEvacuationChatResponse(message: string): EvacuationChatLoca
     return { intent: 'FILLER', content: EVACUATION_CHAT_FILLER_RESPONSE }
   }
   return null
+}
+
+export function isEvacuationChatFullDetailsRequest(message: string): boolean {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return /\b(?:everything|all (?:the )?(?:verified )?(?:details|information)|full (?:verified )?(?:report|details|information))\b/.test(normalized)
 }
 
 function allowedResponseType(value: unknown): EvacuationChatResponseType | null {
@@ -303,6 +319,7 @@ export function buildEvacuationChatPayload(
   community: CommunityData,
   evacuationPlan: EvacuationPlanResult,
 ): EvacuationChatPayload {
+  const fullDetailsRequested = isEvacuationChatFullDetailsRequest(message)
   return {
     message: message.trim(),
     conversationHistory: capConversationHistory(conversationHistory),
@@ -333,6 +350,17 @@ export function buildEvacuationChatPayload(
     },
     trustedFacts: buildEvacuationChatTrustedFacts(risk, community, evacuationPlan),
     allowedActions: evacuationPlan.allowedActions.map(({ id, text }) => ({ id, text })),
+    factSelectionGuidance: fullDetailsRequested
+      ? {
+          detailLevel: 'FULL',
+          maximumFactIds: null,
+          instruction: 'The user explicitly requested full information. Select every relevant trusted fact ID, without adding or rewriting factual claims.',
+        }
+      : {
+          detailLevel: 'CONCISE',
+          maximumFactIds: EVACUATION_CHAT_CONCISE_FACT_LIMIT,
+          instruction: 'Select the smallest useful set of trusted fact IDs, normally no more than six. For status questions prioritize Flood Hazard, Data Confidence, current river or rainfall evidence, model agreement, planning status, and critical warnings or missing information.',
+        },
   }
 }
 

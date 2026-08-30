@@ -10,6 +10,7 @@ import NGODashboard from './components/NGODashboard'
 import CommunityInfo from './components/CommunityInfo'
 import Settings from './components/Settings'
 import { IconMenu } from './components/Icons'
+import defloodShield from './assets/branding/deflood-shield.png'
 import { RiskProvider } from './context/RiskContext'
 import { EvacuationProvider } from './context/EvacuationContext'
 import { RiskScenarioProvider } from './context/RiskScenarioContext'
@@ -133,7 +134,10 @@ function SignedInApplication({
           >
             <IconMenu size={22} />
           </button>
-          <span className="font-bold text-sm tracking-tight">DeFlood.AI</span>
+          <div className="flex items-center gap-2">
+            <img src={defloodShield} alt="" className="h-7 w-7 object-contain" aria-hidden="true" />
+            <span className="font-bold text-sm tracking-tight">DeFlood.AI</span>
+          </div>
           <div className="w-8" />
         </div>
 

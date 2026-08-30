@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { AppUser, Role } from '../App'
+import defloodLogoLight from '../assets/branding/deflood-logo-light.png'
 import { useCommunity } from '../context/CommunityContext'
-import { IconGlobe } from './Icons'
 
 interface SignInProps {
   onSignIn: (user: AppUser) => void
@@ -33,19 +33,17 @@ export default function SignIn({ onSignIn }: SignInProps) {
   return (
     <div className="min-h-screen bg-[#1e3a5f] flex flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-400 rounded-2xl mb-4 shadow-lg">
-            <IconGlobe size={30} className="text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">DeFlood.AI</h1>
-          <p className="text-blue-200 mt-1 text-sm">Flood Risk Assessment &amp; Emergency Management</p>
-          <p className="text-blue-300 mt-0.5 text-xs">Myanmar Community Platform</p>
-        </div>
-
         {/* Card */}
-        <div className="bg-white rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-base font-semibold text-gray-900 mb-5">Community Access</h2>
+        <div className="rounded-2xl bg-white p-6 shadow-2xl sm:p-8">
+          <div className="mb-6 border-b border-gray-100 pb-5 text-center">
+            <img
+              src={defloodLogoLight}
+              alt="DeFlood.AI — AI for Flood Resilience"
+              className="mx-auto h-auto w-full max-w-[290px] object-contain"
+            />
+            <p className="mt-3 text-xs font-medium text-slate-500">Myanmar flood-risk and evacuation-planning prototype</p>
+          </div>
+          <h1 className="text-base font-semibold text-gray-900 mb-5">Community Access</h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">

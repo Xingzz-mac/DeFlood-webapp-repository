@@ -39,9 +39,10 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6">
       <div className="mb-5">
+        <div className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Current community assessment</div>
         <h1 className="text-xl font-bold text-gray-900 md:text-2xl">{community.name}</h1>
         <p className="mt-1 text-xs text-gray-500">
-          {isSampleData ? 'Sample' : 'Confirmed'} coordinates: {community.latitude.toFixed(4)}, {community.longitude.toFixed(4)} ({community.locationSource})
+          {isSampleData ? 'Sample' : 'Confirmed'} assessment location: {community.latitude.toFixed(4)}, {community.longitude.toFixed(4)} ({community.locationSource})
         </p>
       </div>
 

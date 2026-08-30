@@ -1,9 +1,10 @@
 import type { FC } from 'react'
 import type { AppUser, Section } from '../App'
+import defloodShield from '../assets/branding/deflood-shield.png'
 import { useCommunity } from '../context/CommunityContext'
 import {
   IconDashboard, IconShield, IconTruck, IconMap,
-  IconUsers, IconBuilding, IconSettings, IconLogOut, IconGlobe,
+  IconUsers, IconBuilding, IconSettings, IconLogOut,
 } from './Icons'
 
 interface SidebarProps {
@@ -43,15 +44,10 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
   return (
     <div className="w-60 bg-[#1e3a5f] flex flex-col h-full text-white">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-white/10">
+      <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-blue-400 rounded-lg flex items-center justify-center shrink-0">
-            <IconGlobe size={18} className="text-white" />
-          </div>
-          <div>
-            <div className="font-bold text-[15px] leading-tight">DeFlood.AI</div>
-            <div className="text-blue-300 text-[11px] leading-tight">Emergency Platform</div>
-          </div>
+          <img src={defloodShield} alt="" aria-hidden="true" className="h-9 w-9 shrink-0 object-contain" />
+          <div className="text-[15px] font-bold tracking-tight text-white">DeFlood.AI</div>
         </div>
       </div>
 

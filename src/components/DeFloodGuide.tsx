@@ -1,4 +1,4 @@
-import { IconGlobe } from './Icons'
+import defloodShield from '../assets/branding/deflood-shield.png'
 
 export default function DeFloodGuide({ limited }: { limited: boolean }) {
   return (
@@ -8,7 +8,7 @@ export default function DeFloodGuide({ limited }: { limited: boolean }) {
         className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f] text-white sm:flex"
         aria-hidden="true"
       >
-        <IconGlobe size={20} />
+        <img src={defloodShield} alt="" className="h-8 w-8 object-contain" aria-hidden="true" />
       </div>
       <div className="min-w-0">
         <div className="font-bold text-[#1e3a5f]">DeFlood Guide</div>

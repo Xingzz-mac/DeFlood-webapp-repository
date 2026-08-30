@@ -4,6 +4,7 @@ import { calculateEvacuationPlan } from './evacuationEngine'
 import {
   buildEvacuationChatPayload,
   capConversationHistory,
+  EVACUATION_CHAT_CONCISE_FACT_LIMIT,
   EVACUATION_CHAT_CONFUSION_RESPONSE,
   EVACUATION_CHAT_FILLER_RESPONSE,
   EVACUATION_CHAT_RESPONSE_LEADS,
@@ -140,6 +141,10 @@ describe('evacuation planning chat service', () => {
     expect(payload.allowedActions).toEqual(
       highPlan.allowedActions.map(({ id, text }) => ({ id, text })),
     )
+    expect(payload.factSelectionGuidance).toMatchObject({
+      detailLevel: 'CONCISE',
+      maximumFactIds: EVACUATION_CHAT_CONCISE_FACT_LIMIT,
+    })
     expect(payload.trustedFacts).toContainEqual({
       id: 'risk.current-hazard',
       text: 'Current Flood Hazard is HIGH with a hazard score of 82.0 / 100.',
@@ -148,6 +153,21 @@ describe('evacuation planning chat service', () => {
       id: 'shelter.operational-status',
       text: 'Shelter operational status is unknown. Reported shelter inventory and capacity do not establish whether any shelter is operational.',
     })
+  })
+
+  it('requests a broader trusted-fact selection only for explicit full-detail wording', () => {
+    const payload = buildEvacuationChatPayload(
+      'Please give me the full report.',
+      [],
+      highRisk,
+      community,
+      highPlan,
+    )
+    expect(payload.factSelectionGuidance).toMatchObject({
+      detailLevel: 'FULL',
+      maximumFactIds: null,
+    })
+    expect(payload.factSelectionGuidance.instruction).toContain('trusted fact ID')
   })
 
   it('excludes internal risk implementation details from the chat POST body', async () => {
