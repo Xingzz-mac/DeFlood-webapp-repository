@@ -8,6 +8,32 @@ import type { RiskResult } from './riskTypes'
 
 export const EVACUATION_CHAT_HISTORY_LIMIT = 10
 
+export const EVACUATION_CHAT_RESPONSE_TYPES = [
+  'GREETING',
+  'STATUS',
+  'ACTIONS',
+  'FACTS',
+  'MISSING_INFORMATION',
+  'OUT_OF_SCOPE',
+] as const
+
+export type EvacuationChatResponseType = typeof EVACUATION_CHAT_RESPONSE_TYPES[number]
+
+export const EVACUATION_CHAT_RESPONSE_LEADS: Readonly<Record<EvacuationChatResponseType, string>> = {
+  GREETING: 'Hi! Ask me about the current flood situation, evacuation readiness, community resources, or what actions to take.',
+  STATUS: 'Here is the current verified DeFlood information.',
+  ACTIONS: 'Based on the current verified DeFlood data, these are the most relevant actions to start with.',
+  FACTS: 'Here is the relevant verified DeFlood information.',
+  MISSING_INFORMATION: 'DeFlood does not currently have enough verified information to answer that fully.',
+  OUT_OF_SCOPE: 'I can help with the current DeFlood flood assessment, evacuation planning, community resources, and verified planning actions.',
+}
+
+export const EVACUATION_CHAT_THANKS_RESPONSE = "You're welcome. You can ask me about the current risk, resources, missing information, or recommended planning actions."
+export const EVACUATION_CHAT_WORRIED_RESPONSE = 'I can help you focus on the verified situation. You can ask what the current Flood Hazard means, what actions are recommended, or what information is still missing.'
+export const EVACUATION_CHAT_CONFUSION_RESPONSE = 'I can explain it simply. Ask me about the Flood Hazard, Data Confidence, river evidence, community resources, or what actions to take.'
+export const EVACUATION_CHAT_FILLER_RESPONSE = "I'm here. You can ask about the current Flood Hazard, what to do next, community resources, or what's still unknown."
+export const EVACUATION_CHAT_SO_RESPONSE = 'Go ahead — what would you like to know about the current DeFlood assessment?'
+
 export interface EvacuationChatHistoryMessage {
   role: 'user' | 'assistant'
   content: string
@@ -65,11 +91,17 @@ export interface EvacuationChatPayload {
 }
 
 export interface EvacuationChatResult {
+  responseType?: EvacuationChatResponseType | null
   facts: EvacuationChatTrustedFact[]
   actions: AllowedAction[]
   missingInformation: string[]
   rejectedFactIds: string[]
   rejectedActionIds: string[]
+}
+
+export interface EvacuationChatLocalResponse {
+  intent: 'GREETING' | 'THANKS' | 'WORRIED' | 'CONFUSION' | 'FILLER'
+  content: string
 }
 
 interface EvacuationChatOptions {
@@ -89,6 +121,65 @@ export function capConversationHistory(
   history: EvacuationChatHistoryMessage[],
 ): EvacuationChatHistoryMessage[] {
   return history.slice(-EVACUATION_CHAT_HISTORY_LIMIT)
+}
+
+export function localEvacuationChatResponse(message: string): EvacuationChatLocalResponse | null {
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/’/g, "'")
+    .replace(/[.!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening)( there)?$/.test(normalized)) {
+    return { intent: 'GREETING', content: EVACUATION_CHAT_RESPONSE_LEADS.GREETING }
+  }
+  if (/^(thanks|thank you|thanks so much|thank you so much)$/.test(normalized)) {
+    return { intent: 'THANKS', content: EVACUATION_CHAT_THANKS_RESPONSE }
+  }
+  if (/^(?:(?:i'm|i am|i feel) (?:really )?(?:worried|scared|nervous|anxious)|this (?:is|feels) worrying)$/.test(normalized)) {
+    return { intent: 'WORRIED', content: EVACUATION_CHAT_WORRIED_RESPONSE }
+  }
+  if (/^(?:(?:i'm|i am) confused|i (?:don't|do not) understand|what does this mean|can you explain this)$/.test(normalized)) {
+    return { intent: 'CONFUSION', content: EVACUATION_CHAT_CONFUSION_RESPONSE }
+  }
+  if (normalized === 'so') {
+    return { intent: 'FILLER', content: EVACUATION_CHAT_SO_RESPONSE }
+  }
+  if (/^(?:(?:a+h+)+|h+m+|u+h+|u+m+|o+h+|(?:so)+|ok(?:ay)?)$/.test(normalized)) {
+    return { intent: 'FILLER', content: EVACUATION_CHAT_FILLER_RESPONSE }
+  }
+  return null
+}
+
+function allowedResponseType(value: unknown): EvacuationChatResponseType | null {
+  return typeof value === 'string'
+    && EVACUATION_CHAT_RESPONSE_TYPES.includes(value as EvacuationChatResponseType)
+    ? value as EvacuationChatResponseType
+    : null
+}
+
+export function resolveEvacuationChatResponseType(
+  result: Pick<EvacuationChatResult, 'responseType' | 'facts' | 'actions' | 'missingInformation'>,
+): EvacuationChatResponseType | null {
+  const requested = allowedResponseType(result.responseType)
+  const hasFacts = result.facts.length > 0
+  const hasActions = result.actions.length > 0
+  const hasMissingInformation = result.missingInformation.length > 0
+  const hasGroundedContent = hasFacts || hasActions || hasMissingInformation
+
+  if ((requested === 'GREETING' || requested === 'OUT_OF_SCOPE') && !hasGroundedContent) {
+    return requested
+  }
+  if (requested === 'STATUS' && hasGroundedContent) return requested
+  if (requested === 'ACTIONS' && hasActions) return requested
+  if (requested === 'FACTS' && hasFacts) return requested
+  if (requested === 'MISSING_INFORMATION' && hasMissingInformation) return requested
+
+  if (hasFacts) return 'FACTS'
+  if (hasActions) return 'ACTIONS'
+  if (hasMissingInformation) return 'MISSING_INFORMATION'
+  return null
 }
 
 function serializeRisk(risk: RiskResult): EvacuationChatSafeRisk {
@@ -371,13 +462,15 @@ function parseChatResponse(
       return true
     })
 
-  return {
+  const result: EvacuationChatResult = {
+    responseType: allowedResponseType(record.responseType),
     facts,
     actions,
     missingInformation,
     rejectedFactIds,
     rejectedActionIds,
   }
+  return { ...result, responseType: resolveEvacuationChatResponseType(result) }
 }
 
 export async function requestEvacuationChat(

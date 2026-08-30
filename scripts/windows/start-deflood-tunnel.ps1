@@ -103,7 +103,7 @@ function Receive-CloudflaredEvent {
     }
 }
 
-Write-Host "Starting the DeFlood n8n Quick Tunnel..."
+Write-Host "Starting the DeFlood n8n Quick Tunnel with HTTP/2 transport..."
 
 $cloudflaredPath = $cloudflaredCommand.Source
 if ([string]::IsNullOrWhiteSpace($cloudflaredPath)) {
@@ -112,7 +112,7 @@ if ([string]::IsNullOrWhiteSpace($cloudflaredPath)) {
 
 $startInfo = New-Object System.Diagnostics.ProcessStartInfo
 $startInfo.FileName = $cloudflaredPath
-$startInfo.Arguments = "tunnel --url http://localhost:5678"
+$startInfo.Arguments = "tunnel --protocol http2 --url http://localhost:5678"
 $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
 # Keep both native streams as text so Windows PowerShell never converts normal stderr logs into ErrorRecord objects.

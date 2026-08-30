@@ -4,6 +4,12 @@ import { calculateEvacuationPlan } from './evacuationEngine'
 import {
   buildEvacuationChatPayload,
   capConversationHistory,
+  EVACUATION_CHAT_CONFUSION_RESPONSE,
+  EVACUATION_CHAT_FILLER_RESPONSE,
+  EVACUATION_CHAT_RESPONSE_LEADS,
+  EVACUATION_CHAT_SO_RESPONSE,
+  EVACUATION_CHAT_WORRIED_RESPONSE,
+  localEvacuationChatResponse,
   requestEvacuationChat,
   suggestedEvacuationChatQuestions,
   type EvacuationChatHistoryMessage,
@@ -48,6 +54,29 @@ function response(body: unknown, ok = true, status = 200): Response {
 }
 
 describe('evacuation planning chat service', () => {
+  it('classifies only bounded conversational messages for local handling', () => {
+    expect(localEvacuationChatResponse("I'm worried")?.content).toBe(EVACUATION_CHAT_WORRIED_RESPONSE)
+    expect(localEvacuationChatResponse("I don't understand")?.content).toBe(EVACUATION_CHAT_CONFUSION_RESPONSE)
+    expect(localEvacuationChatResponse('ahhhhahhh')?.content).toBe(EVACUATION_CHAT_FILLER_RESPONSE)
+    expect(localEvacuationChatResponse('soso')?.content).toBe(EVACUATION_CHAT_FILLER_RESPONSE)
+    expect(localEvacuationChatResponse('so')?.content).toBe(EVACUATION_CHAT_SO_RESPONSE)
+  })
+
+  it('does not classify meaningful flood and planning questions as local filler', () => {
+    for (const question of [
+      'tell me about the current state',
+      'what should i do',
+      'why is the risk low',
+      'what is still unknown',
+      'what should volunteers focus on',
+      'how much shelter capacity do we have',
+      'what does the current risk mean',
+      'so what should we do first',
+    ]) {
+      expect(localEvacuationChatResponse(question)).toBeNull()
+    }
+  })
+
   it('builds a request with chat-safe risk, community, plan, and contextual allowed actions', () => {
     const payload = buildEvacuationChatPayload(
       'What should I verify?',
@@ -197,6 +226,54 @@ describe('evacuation planning chat service', () => {
     environmentalFetcher.mockRestore()
   })
 
+  it('treats validated action IDs with zero fact IDs as a grounded action response', async () => {
+    const trusted = highPlan.allowedActions.find(action => action.id === 'verify-transport-capacity')
+    const fetcher = vi.fn().mockResolvedValue(response({
+      responseType: 'ACTIONS',
+      answer: 'Model-authored operational advice must not be displayed.',
+      factIds: [],
+      actionIds: ['verify-transport-capacity'],
+    }))
+    const payload = buildEvacuationChatPayload(
+      'What should I start doing?',
+      [],
+      highRisk,
+      community,
+      highPlan,
+    )
+
+    const result = await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher,
+    })
+
+    expect(result.responseType).toBe('ACTIONS')
+    expect(result.facts).toEqual([])
+    expect(result.actions).toEqual([trusted])
+    expect(result).not.toHaveProperty('answer')
+    expect(EVACUATION_CHAT_RESPONSE_LEADS.ACTIONS).toContain('verified DeFlood data')
+  })
+
+  it('ignores arbitrary response types instead of displaying model-authored prose', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({
+      responseType: 'EVACUATION_ORDER',
+      answer: 'Mandatory evacuation order issued by the model.',
+      factIds: [],
+      actionIds: [],
+    }))
+    const payload = buildEvacuationChatPayload('Adversarial prompt', [], highRisk, community, highPlan)
+
+    const result = await requestEvacuationChat(payload, highPlan, {
+      url: 'https://example.test/chat',
+      fetcher,
+    })
+
+    expect(result.responseType).toBeNull()
+    expect(result.facts).toEqual([])
+    expect(result.actions).toEqual([])
+    expect(result).not.toHaveProperty('answer')
+  })
+
   it('suggests a shelter question when reported shelter information exists', () => {
     expect(suggestedEvacuationChatQuestions(highRisk, highPlan)).toContain(
       'Do we have enough shelter capacity?',
@@ -238,6 +315,7 @@ describe('evacuation planning chat service', () => {
       fetcher,
     })
     expect(result.facts).toEqual([trustedFact])
+    expect(result.responseType).toBe('FACTS')
     expect(result).not.toHaveProperty('answer')
     expect(result.actions).toEqual([trusted])
     expect(result.actions[0]?.text).not.toBe('Invented wording')

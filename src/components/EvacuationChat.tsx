@@ -11,8 +11,11 @@ import {
   buildEvacuationChatPayload,
   buildEvacuationChatTrustedFacts,
   capConversationHistory,
+  EVACUATION_CHAT_RESPONSE_LEADS,
+  localEvacuationChatResponse,
   planningContextFingerprint,
   requestEvacuationChat,
+  resolveEvacuationChatResponseType,
   suggestedEvacuationChatQuestions,
   type EvacuationChatHistoryMessage,
   type EvacuationChatPayload,
@@ -32,6 +35,15 @@ interface EvacuationChatProps {
   community: CommunityData
   plan: EvacuationPlanResult
   requester?: ChatRequester
+  showResponseSourceDiagnostics?: boolean
+}
+
+type ResponseSource = 'LOCAL' | 'VERIFIED_DATA' | 'AI_SELECTED_VERIFIED'
+
+const RESPONSE_SOURCE_LABELS: Readonly<Record<ResponseSource, string>> = {
+  LOCAL: 'Handled locally',
+  VERIFIED_DATA: 'Verified-data response',
+  AI_SELECTED_VERIFIED: 'AI-selected verified response',
 }
 
 interface DisplayMessage {
@@ -42,6 +54,8 @@ interface DisplayMessage {
   actions: AllowedAction[]
   missingInformation: string[]
   error: boolean
+  responseSource: ResponseSource | null
+  includeInHistory: boolean
 }
 
 const UNAVAILABLE_MESSAGE = 'DeFlood AI is temporarily unavailable. The verified planning information above is still available.'
@@ -74,7 +88,11 @@ function revalidateResult(
   const currentMissing = new Set(currentPlan.missingInformation)
   const missingInformation = [...new Set(result.missingInformation)]
     .filter(item => currentMissing.has(item))
-  return { ...result, facts, actions, missingInformation }
+  const validated = { ...result, facts, actions, missingInformation }
+  return {
+    ...validated,
+    responseType: resolveEvacuationChatResponseType(validated),
+  }
 }
 
 export default function EvacuationChat({
@@ -82,6 +100,7 @@ export default function EvacuationChat({
   community,
   plan,
   requester = requestEvacuationChat,
+  showResponseSourceDiagnostics = import.meta.env.DEV,
 }: EvacuationChatProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [draft, setDraft] = useState('')
@@ -102,7 +121,7 @@ export default function EvacuationChat({
   const addMessage = (
     role: DisplayMessage['role'],
     content: string,
-    extras: Partial<Pick<DisplayMessage, 'facts' | 'actions' | 'missingInformation' | 'error'>> = {},
+    extras: Partial<Pick<DisplayMessage, 'facts' | 'actions' | 'missingInformation' | 'error' | 'responseSource' | 'includeInHistory'>> = {},
   ): DisplayMessage => ({
     id: nextMessageId.current++,
     role,
@@ -111,6 +130,8 @@ export default function EvacuationChat({
     actions: extras.actions ?? [],
     missingInformation: extras.missingInformation ?? [],
     error: extras.error ?? false,
+    responseSource: extras.responseSource ?? null,
+    includeInHistory: extras.includeInHistory ?? true,
   })
 
   useEffect(() => {
@@ -130,7 +151,9 @@ export default function EvacuationChat({
 
   const historyForRequest = (): EvacuationChatHistoryMessage[] => capConversationHistory(
     messages.flatMap(message => (
-      (message.role === 'user' || message.role === 'assistant') && !message.error
+      (message.role === 'user' || message.role === 'assistant')
+        && !message.error
+        && message.includeInHistory
         ? [{
             role: message.role,
             content: [
@@ -147,6 +170,19 @@ export default function EvacuationChat({
   const sendQuestion = async (value: string) => {
     const question = value.trim()
     if (!question || loadingRef.current) return
+    const localResponse = localEvacuationChatResponse(question)
+    if (localResponse) {
+      setMessages(current => [
+        ...current,
+        addMessage('user', question, { includeInHistory: false }),
+        addMessage('assistant', localResponse.content, {
+          responseSource: 'LOCAL',
+          includeInHistory: false,
+        }),
+      ])
+      setDraft('')
+      return
+    }
     loadingRef.current = true
     const requestFingerprint = contextFingerprint
     const history = historyForRequest()
@@ -166,13 +202,19 @@ export default function EvacuationChat({
         latestContextRef.current.plan,
         latestContextRef.current.trustedFacts,
       )
-      const content = validated.facts.length > 0
-        ? 'Here is the current verified DeFlood information.'
+      const content = validated.responseType
+        ? EVACUATION_CHAT_RESPONSE_LEADS[validated.responseType]
         : NO_VERIFIED_ANSWER_MESSAGE
+      const hasSelectedVerifiedContent = validated.facts.length > 0
+        || validated.actions.length > 0
+        || validated.missingInformation.length > 0
       setMessages(current => [...current, addMessage('assistant', content, {
         facts: validated.facts,
         actions: validated.actions,
         missingInformation: validated.missingInformation,
+        responseSource: hasSelectedVerifiedContent
+          ? 'AI_SELECTED_VERIFIED'
+          : 'VERIFIED_DATA',
       })])
     } catch {
       setMessages(current => [...current, addMessage('assistant', UNAVAILABLE_MESSAGE, { error: true })])
@@ -222,7 +264,10 @@ export default function EvacuationChat({
         )}
       </div>
       <p className="mt-3 text-xs text-gray-500">
-        AI explains verified DeFlood data and actions. It cannot change risk calculations or issue evacuation orders.
+        Grounded assistant — simple conversation may be handled locally; flood-related answers use verified DeFlood data and approved planning actions.
+      </p>
+      <p className="mt-1 text-xs text-gray-500">
+        It cannot change risk calculations or issue evacuation orders.
       </p>
       {demoActive && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
@@ -278,6 +323,14 @@ export default function EvacuationChat({
                   {user ? 'You' : 'DeFlood AI'}
                 </div>
                 <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                {!user && showResponseSourceDiagnostics && message.responseSource && (
+                  <div
+                    data-testid="deflood-response-source"
+                    className="mt-2 text-[10px] font-medium text-gray-500"
+                  >
+                    {RESPONSE_SOURCE_LABELS[message.responseSource]}
+                  </div>
+                )}
                 {message.facts.length > 0 && (
                   <div className="mt-3 border-t border-gray-300/60 pt-3">
                     <div className="text-xs font-bold text-gray-700">Verified information</div>

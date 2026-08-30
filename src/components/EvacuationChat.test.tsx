@@ -4,6 +4,12 @@ import type { CommunityData } from '../context/CommunityContext'
 import { calculateEvacuationPlan } from '../services/evacuationEngine'
 import {
   buildEvacuationChatTrustedFacts,
+  EVACUATION_CHAT_CONFUSION_RESPONSE,
+  EVACUATION_CHAT_FILLER_RESPONSE,
+  EVACUATION_CHAT_RESPONSE_LEADS,
+  EVACUATION_CHAT_SO_RESPONSE,
+  EVACUATION_CHAT_THANKS_RESPONSE,
+  EVACUATION_CHAT_WORRIED_RESPONSE,
   type EvacuationChatPayload,
   type EvacuationChatResult,
 } from '../services/evacuationChat'
@@ -74,6 +80,7 @@ function renderChat(
   currentCommunity: CommunityData,
   plan: EvacuationPlanResult,
   requester: (payload: EvacuationChatPayload, currentPlan: EvacuationPlanResult) => Promise<EvacuationChatResult>,
+  showResponseSourceDiagnostics = true,
 ) {
   return create(
     <EvacuationChat
@@ -81,6 +88,7 @@ function renderChat(
       community={currentCommunity}
       plan={plan}
       requester={requester}
+      showResponseSourceDiagnostics={showResponseSourceDiagnostics}
     />,
   )
 }
@@ -88,6 +96,236 @@ function renderChat(
 describe('Ask DeFlood AI interface', () => {
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  })
+
+  it('answers a simple greeting locally without calling the workflow', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn()
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'hi')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(EVACUATION_CHAT_RESPONSE_LEADS.GREETING)
+    expect(text).not.toContain('That information is not available')
+    expect(requester).not.toHaveBeenCalled()
+    await act(async () => renderer?.unmount())
+  })
+
+  it('answers thanks locally without calling the workflow', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn()
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'thank you!')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(EVACUATION_CHAT_THANKS_RESPONSE)
+    expect(text).not.toContain('That information is not available')
+    expect(requester).not.toHaveBeenCalled()
+    await act(async () => renderer?.unmount())
+  })
+
+  it.each([
+    ["I'm worried", EVACUATION_CHAT_WORRIED_RESPONSE],
+    ["I'm confused", EVACUATION_CHAT_CONFUSION_RESPONSE],
+    ['ahhh', EVACUATION_CHAT_FILLER_RESPONSE],
+    ['so', EVACUATION_CHAT_SO_RESPONSE],
+  ])('handles %s locally without unavailable or backend-failure wording', async (message, expectedResponse) => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn()
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, message)
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(expectedResponse)
+    expect(text).toContain('Handled locally')
+    expect(text).not.toContain('That information is not available')
+    expect(text).not.toContain('DeFlood AI is temporarily unavailable')
+    expect(requester).not.toHaveBeenCalled()
+    await act(async () => renderer?.unmount())
+  })
+
+  it('does not include locally handled conversation in a later backend request history', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn().mockResolvedValue({
+      facts: [],
+      actions: [],
+      missingInformation: [],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'ahhh')
+    await send(renderer!, 'Who won the football match?')
+
+    expect(requester).toHaveBeenCalledTimes(1)
+    const payload = requester.mock.calls[0]?.[0] as EvacuationChatPayload
+    expect(payload.conversationHistory).toEqual([])
+    await act(async () => renderer?.unmount())
+  })
+
+  it('shows response-source diagnostics only when DEV diagnostics are enabled', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn()
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester, false)
+    })
+
+    await send(renderer!, 'hi')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(EVACUATION_CHAT_RESPONSE_LEADS.GREETING)
+    expect(text).toContain(
+      'Grounded assistant — simple conversation may be handled locally; flood-related answers use verified DeFlood data and approved planning actions.',
+    )
+    expect(text).not.toContain('Handled locally')
+    expect(renderer!.root.findAllByProps({ 'data-testid': 'deflood-response-source' })).toHaveLength(0)
+    await act(async () => renderer?.unmount())
+  })
+
+  it('uses an app-owned action lead for an action-only answer and preserves unknowns', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community({ population: 2340 })
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const trustedAction = plan.allowedActions.find(
+      action => action.id === 'review-evacuation-readiness',
+    )!
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'ACTIONS',
+      answer: 'Begin an immediate evacuation on a route selected by the model.',
+      facts: [],
+      actions: [{ ...trustedAction, text: 'Model-authored replacement action.' }],
+      missingInformation: plan.missingInformation.slice(0, 3),
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'what should i do')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(EVACUATION_CHAT_RESPONSE_LEADS.ACTIONS)
+    expect(text).toContain('Verified actions')
+    expect(text).toContain(trustedAction.text)
+    expect(text).toContain('Still unknown')
+    expect(text).not.toContain('That information is not available')
+    expect(text).not.toContain('Begin an immediate evacuation')
+    expect(text).not.toContain('Model-authored replacement action')
+    expect(text).toContain('AI-selected verified response')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('renders a facts-only response with an app-owned lead', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const trustedFact = buildEvacuationChatTrustedFacts(risk, currentCommunity, plan)
+      .find(fact => fact.id === 'risk.current-hazard')!
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'FACTS',
+      facts: [trustedFact],
+      actions: [],
+      missingInformation: [],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'tell me about the current state')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(EVACUATION_CHAT_RESPONSE_LEADS.FACTS)
+    expect(text).toContain(trustedFact.text)
+    expect(text).toContain('Verified information')
+    expect(text).toContain('AI-selected verified response')
+    expect(text).not.toContain('That information is not available')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('uses deterministic missing information without claiming unknown values', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const missing = plan.missingInformation[0]!
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'MISSING_INFORMATION',
+      facts: [],
+      actions: [],
+      missingInformation: [missing, 'Invented unknown'],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'What still needs to be verified?')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain(EVACUATION_CHAT_RESPONSE_LEADS.MISSING_INFORMATION)
+    expect(text).toContain(missing)
+    expect(text).not.toContain('Invented unknown')
+    expect(text).not.toContain('That information is not available')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('uses the hard fallback only when no validated content or supported intent exists', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn().mockResolvedValue({
+      responseType: null,
+      facts: [],
+      actions: [],
+      missingInformation: [],
+      rejectedFactIds: ['invented.fact'],
+      rejectedActionIds: ['invent-route'],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    await send(renderer!, 'Who won the football match?')
+
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain('That information is not available in the current verified DeFlood data.')
+    expect(text).not.toContain('Verified actions')
+    expect(text).not.toContain('Verified information')
+    await act(async () => renderer?.unmount())
   })
 
   it('renders only current app-owned facts and actions while ignoring arbitrary model answer text', async () => {
@@ -122,7 +360,7 @@ describe('Ask DeFlood AI interface', () => {
     expect(payload.evacuationPlan.shelter.shortage).toBe(800)
     expect(payload.shelterGrounding.operationalStatus).toBe('UNKNOWN')
     const text = pageText(renderer!.toJSON())
-    expect(text).toContain('Here is the current verified DeFlood information.')
+    expect(text).toContain(EVACUATION_CHAT_RESPONSE_LEADS.FACTS)
     expect(text).toContain(trustedFact.text)
     expect(text).not.toContain('Order everyone into the recorded vehicles immediately.')
     expect(text).not.toContain('Server-authored replacement wording')
@@ -236,6 +474,7 @@ describe('Ask DeFlood AI interface', () => {
     })
     await send(renderer!, 'Can you explain the plan?')
 
+    expect(requester).toHaveBeenCalledTimes(1)
     expect(pageText(renderer!.toJSON())).toContain(
       'DeFlood AI is temporarily unavailable. The verified planning information above is still available.',
     )
