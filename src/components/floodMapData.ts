@@ -1,50 +1,126 @@
-export type SampleRisk = 'LOW' | 'MEDIUM' | 'HIGH'
-export type MapRisk = SampleRisk | 'INCOMPLETE' | 'NOT_CALCULATED'
+import type { CommunityData } from '../context/CommunityContext'
+import { floodAssessmentPresentation } from '../services/riskPresentation'
+import { RIVER_MAX_SEARCH_DISTANCE_KM } from '../services/riverSpatial'
+import type { RiskResult } from '../services/riskTypes'
+import type { EnvironmentalData, GeographicCoordinate, RiverLookupMode } from '../services/types'
 
-export interface MapCommunity {
-  id: string
-  kind: 'current' | 'sample'
-  name: string
-  x: number
-  y: number
-  risk: MapRisk
-  population: number
-  needs: string
-  status: string
+export interface FloodMapPoint {
+  coordinate: GeographicCoordinate
+  label: string
 }
 
-const sampleCommunities: MapCommunity[] = [
-  { id: 'sample-c2', kind: 'sample', name: 'Sample — Bogale Township', x: 28, y: 57, risk: 'HIGH', population: 4120, needs: 'Sample shelter and water request', status: 'Sample request' },
-  { id: 'sample-c3', kind: 'sample', name: 'Sample — Mawlamyinegyun', x: 63, y: 34, risk: 'MEDIUM', population: 1870, needs: 'Sample monitoring record', status: 'Sample alert' },
-  { id: 'sample-c4', kind: 'sample', name: 'Sample — Dedaye Township', x: 51, y: 64, risk: 'MEDIUM', population: 3100, needs: 'Sample supply record', status: 'Sample prepared state' },
-  { id: 'sample-c5', kind: 'sample', name: 'Sample — Pyapon District', x: 73, y: 56, risk: 'LOW', population: 5400, needs: 'Sample: none', status: 'Sample state' },
-  { id: 'sample-c6', kind: 'sample', name: 'Sample — Wakema', x: 19, y: 37, risk: 'LOW', population: 2800, needs: 'Sample: none', status: 'Sample state' },
-]
+export interface FloodMapRiverPoint extends FloodMapPoint {
+  lookupMode: Exclude<RiverLookupMode, 'UNAVAILABLE'>
+  distanceKm: number | null
+  provenanceText: string
+}
 
-export function buildMapCommunities(current: {
-  name: string
-  population: number
-}, currentRisk?: {
-  calculationStatus: 'NOT_CALCULATED' | 'INCOMPLETE' | 'COMPLETE'
-  hazardLevel: SampleRisk | null
-}): MapCommunity[] {
-  const risk: MapRisk = currentRisk?.calculationStatus === 'COMPLETE'
-    ? currentRisk.hazardLevel ?? 'NOT_CALCULATED'
-    : currentRisk?.calculationStatus ?? 'NOT_CALCULATED'
-  return [
-    {
-      id: 'current',
-      kind: 'current',
-      name: current.name,
-      x: 44,
-      y: 43,
-      risk,
-      population: current.population,
-      needs: 'No operational requirement calculated',
-      status: currentRisk?.calculationStatus === 'COMPLETE'
-        ? 'Shared deterministic Flood Hazard'
-        : 'Monitoring / Prototype',
-    },
-    ...sampleCommunities,
-  ]
+export interface FloodMapViewModel {
+  hasSavedCoordinate: boolean
+  center: GeographicCoordinate | null
+  communityPoint: FloodMapPoint | null
+  riverPoint: FloodMapRiverPoint | null
+  evidenceLine: [GeographicCoordinate, GeographicCoordinate] | null
+  searchRadiusKm: number
+  riverUnavailableMessage: string | null
+  presentation: ReturnType<typeof floodAssessmentPresentation>
+  hazardScore: number | null
+  confidenceScore: number | null
+  rainfallSeverity: number | null
+  usableWeatherModels: number
+  totalWeatherModels: number
+  agreementLabel: string
+  currentDischarge: number | null
+  dischargeUnit: string
+  riverTrend: string | null
+  riverPercentile: number | null
+}
+
+type FloodMapRisk = Pick<
+  RiskResult,
+  | 'calculationStatus'
+  | 'hazardLevel'
+  | 'hazardScore'
+  | 'confidenceScore'
+  | 'rainfallSeverity'
+  | 'weatherConsensus'
+  | 'modelAgreement'
+  | 'riverTrend'
+  | 'riverPercentile'
+>
+
+function validCoordinate(coordinate: GeographicCoordinate): boolean {
+  return Number.isFinite(coordinate.latitude)
+    && coordinate.latitude >= -90
+    && coordinate.latitude <= 90
+    && Number.isFinite(coordinate.longitude)
+    && coordinate.longitude >= -180
+    && coordinate.longitude <= 180
+}
+
+function riverProvenanceText(
+  lookupMode: Exclude<RiverLookupMode, 'UNAVAILABLE'>,
+  distanceKm: number | null,
+): string {
+  const distance = distanceKm === null ? 'an unavailable distance' : `${distanceKm.toFixed(1)} km`
+  return lookupMode === 'EXACT_QUERY'
+    ? `The exact community query returned this GloFAS grid point, ${distance} from the community.`
+    : `Nearest usable GloFAS point found by nearby search, ${distance} from the community.`
+}
+
+export function buildFloodMapViewModel(
+  community: Pick<CommunityData, 'name' | 'latitude' | 'longitude'>,
+  risk: FloodMapRisk,
+  environmentalData: EnvironmentalData | null,
+): FloodMapViewModel {
+  const coordinate = { latitude: community.latitude, longitude: community.longitude }
+  const hasSavedCoordinate = validCoordinate(coordinate)
+  const communityPoint = hasSavedCoordinate
+    ? { coordinate, label: 'Assessment location' }
+    : null
+  const river = environmentalData?.river ?? null
+  const hasUsableRiverPoint = Boolean(
+    river?.primaryUsable
+      && river.riverLookupMode !== 'UNAVAILABLE'
+      && river.riverModelCoordinate
+      && validCoordinate(river.riverModelCoordinate),
+  )
+  const riverPoint = hasUsableRiverPoint && river?.riverModelCoordinate
+    ? {
+        coordinate: river.riverModelCoordinate,
+        label: 'GloFAS modeled river point',
+        lookupMode: river.riverLookupMode as Exclude<RiverLookupMode, 'UNAVAILABLE'>,
+        distanceKm: river.riverModelDistanceKm,
+        provenanceText: riverProvenanceText(
+          river.riverLookupMode as Exclude<RiverLookupMode, 'UNAVAILABLE'>,
+          river.riverModelDistanceKm,
+        ),
+      }
+    : null
+  const currentDischarge = river?.days.find(day => day.discharge !== null)?.discharge ?? null
+
+  return {
+    hasSavedCoordinate,
+    center: hasSavedCoordinate ? coordinate : null,
+    communityPoint,
+    riverPoint,
+    evidenceLine: communityPoint && riverPoint
+      ? [communityPoint.coordinate, riverPoint.coordinate]
+      : null,
+    searchRadiusKm: RIVER_MAX_SEARCH_DISTANCE_KM,
+    riverUnavailableMessage: riverPoint
+      ? null
+      : 'No representative GloFAS river point was found within the nearby search radius.',
+    presentation: floodAssessmentPresentation(risk),
+    hazardScore: risk.hazardScore,
+    confidenceScore: risk.calculationStatus === 'NOT_CALCULATED' ? null : risk.confidenceScore,
+    rainfallSeverity: risk.rainfallSeverity,
+    usableWeatherModels: risk.weatherConsensus.usableModelCount,
+    totalWeatherModels: risk.weatherConsensus.totalConfiguredModelCount,
+    agreementLabel: risk.modelAgreement.label,
+    currentDischarge,
+    dischargeUnit: river?.unit ?? 'm³/s',
+    riverTrend: risk.riverTrend.label,
+    riverPercentile: risk.riverPercentile,
+  }
 }

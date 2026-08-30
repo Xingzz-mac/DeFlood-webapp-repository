@@ -1,166 +1,245 @@
 import { useState } from 'react'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
-import { buildMapCommunities, type MapRisk } from './floodMapData'
-import RiskBadge from './RiskBadge'
+import DeFloodGuide from './DeFloodGuide'
+import GeographicEvidenceMap, {
+  type FloodMapLayerVisibility,
+  type MapDeviceLocation,
+} from './GeographicEvidenceMap'
+import { buildFloodMapViewModel } from './floodMapData'
 
-const riskFill: Record<MapRisk, string> = {
-  LOW: '#16a34a',
-  MEDIUM: '#d97706',
-  HIGH: '#dc2626',
-  INCOMPLETE: '#64748b',
-  NOT_CALCULATED: '#2563eb',
+const initialLayers: FloodMapLayerVisibility = {
+  community: true,
+  riverPoint: true,
+  searchRadius: true,
+  evidenceLine: true,
+}
+
+function score(value: number | null): string {
+  return value === null ? 'Unavailable' : `${value.toFixed(1)} / 100`
+}
+
+function measurement(value: number | null, unit: string): string {
+  return value === null ? 'Unavailable' : `${value.toFixed(2)} ${unit}`
 }
 
 export default function FloodMap() {
-  const { community: shared } = useCommunity()
+  const { community } = useCommunity()
   const risk = useRisk()
-  const communities = buildMapCommunities(shared, {
-    calculationStatus: risk.calculationStatus,
-    hazardLevel: risk.hazardLevel,
-  })
-  const [selectedId, setSelectedId] = useState('current')
-  const selected = communities.find(community => community.id === selectedId) ?? communities[0]
+  const model = buildFloodMapViewModel(community, risk, risk.environmentalData)
+  const [layers, setLayers] = useState<FloodMapLayerVisibility>(initialLayers)
+  const [deviceLocation, setDeviceLocation] = useState<MapDeviceLocation | null>(null)
+  const demoRiskActive = risk.engineVersion.startsWith('deflood-dev-scenario')
 
-  return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      <div className="mb-5">
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Community Flood Map</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Prototype map — the saved current-community marker uses the shared deterministic Flood Hazard</p>
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-          All other communities, risk colors, shelters, and flood overlays are clearly marked sample data and are not live.
+  const toggleLayer = (layer: keyof FloodMapLayerVisibility) => {
+    setLayers(current => ({ ...current, [layer]: !current[layer] }))
+  }
+
+  if (!model.hasSavedCoordinate) {
+    return (
+      <div className="mx-auto max-w-5xl p-4 md:p-6">
+        <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Flood evidence / assessment map</h1>
+        <div className="mt-5 rounded-2xl border border-gray-300 bg-gray-50 p-6 text-sm text-gray-700" role="status">
+          No valid saved assessment coordinate is available. Save a location in Community Information to open the geographic map.
         </div>
       </div>
+    )
+  }
 
-      <div className="grid md:grid-cols-3 gap-4">
-        {/* Map SVG */}
-        <div className="md:col-span-2 bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div className="relative" style={{ paddingBottom: '58%' }}>
-            <svg
-              className="absolute inset-0 w-full h-full cursor-pointer"
-              viewBox="0 0 100 75"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              {/* Sky/land background */}
-              <rect width="100" height="75" fill="#f0f7ef" />
-
-              {/* Water — Ayeyarwady delta */}
-              <path
-                d="M 0 35 Q 12 32 22 38 Q 32 44 38 52 Q 44 60 54 67 Q 65 72 80 70 L 100 68 L 100 75 L 0 75 Z"
-                fill="#bfdbfe" opacity="0.6"
-              />
-              {/* Main river channel */}
-              <path d="M 38 0 Q 40 12 42 22 Q 44 32 46 44 Q 48 56 50 67" stroke="#93c5fd" strokeWidth="2.5" fill="none" />
-              {/* Tributary */}
-              <path d="M 0 48 Q 12 46 24 48 Q 32 50 38 48" stroke="#93c5fd" strokeWidth="1.5" fill="none" />
-              {/* Secondary channel */}
-              <path d="M 50 20 Q 58 24 66 22 Q 72 20 78 24" stroke="#93c5fd" strokeWidth="1" fill="none" opacity="0.6" />
-
-              {/* Flood risk zones (semi-transparent overlay) */}
-              <ellipse cx="38" cy="52" rx="16" ry="10" fill="#fca5a5" opacity="0.2" />
-              <ellipse cx="28" cy="57" rx="12" ry="8" fill="#fca5a5" opacity="0.18" />
-
-              {/* Roads */}
-              <path d="M 8 62 L 92 62" stroke="#d1d5db" strokeWidth="0.6" strokeDasharray="2,1.5" />
-              <path d="M 44 5 L 44 70" stroke="#d1d5db" strokeWidth="0.6" strokeDasharray="2,1.5" />
-
-              {/* Shelter markers */}
-              <rect x="42" y="18" width="5" height="4" rx="0.5" fill="#1e3a5f" opacity="0.75" />
-              <text x="48.5" y="21.5" fontSize="2.8" fill="#1e3a5f" fontFamily="system-ui" opacity="0.8" fontWeight="600">Shelter A</text>
-              <rect x="64" y="48" width="5" height="4" rx="0.5" fill="#1e3a5f" opacity="0.75" />
-              <text x="70" y="51.5" fontSize="2.8" fill="#1e3a5f" fontFamily="system-ui" opacity="0.8" fontWeight="600">Shelter B</text>
-
-              {/* Community markers */}
-              {communities.map(c => {
-                const isSelected = selectedId === c.id
-                const r = c.risk === 'HIGH' ? 3.8 : 2.8
-                return (
-                  <g key={c.id} onClick={() => setSelectedId(c.id)}>
-                    {isSelected && (
-                      <circle cx={c.x} cy={c.y} r={r + 3.5} fill={riskFill[c.risk]} opacity="0.15" />
-                    )}
-                    <circle
-                      cx={c.x} cy={c.y} r={r}
-                      fill={riskFill[c.risk]}
-                      stroke="white"
-                      strokeWidth="1.2"
-                    />
-                    {c.kind === 'sample' && c.risk === 'HIGH' && (
-                      <text x={c.x} y={c.y + 0.5} textAnchor="middle" fontSize="2.5" fill="white" fontWeight="700" fontFamily="system-ui">!</text>
-                    )}
-                    <text
-                      x={c.x + r + 1.5} y={c.y + 1}
-                      fontSize="2.6" fill="#111827"
-                      fontFamily="system-ui" fontWeight={isSelected ? '700' : '500'}
-                    >
-                      {c.name.split(' ').slice(0, 2).join(' ')}
-                    </text>
-                  </g>
-                )
-              })}
-            </svg>
-          </div>
-
-          {/* Legend */}
-          <div className="px-5 py-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-600">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-full" style={{ background: riskFill[communities[0].risk] }} />
-              Current community — {communities[0].risk.replace(/_/g, ' ').toLowerCase()}
-            </span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-600 inline-block" /> Sample high</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> Sample medium</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> Sample low</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#1e3a5f] inline-block" /> Sample shelter</span>
-            <span className="flex items-center gap-1.5"><span className="w-5 h-2.5 bg-blue-200 rounded-sm inline-block" /> Sample flood overlay</span>
-          </div>
+  return (
+    <div className="mx-auto max-w-6xl p-4 md:p-6">
+      <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Flood evidence / assessment map</h1>
+          <p className="mt-1 max-w-3xl text-sm text-gray-500">
+            A real geographic basemap centered on the saved Community Information coordinate. Coordinates—not the community name—determine the map location.
+          </p>
         </div>
+        <DeFloodGuide limited={model.presentation.mode === 'LIMITED'} />
+      </div>
 
-        {/* Info panel */}
-        <div className="space-y-3">
-          {/* Selected community */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5">
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <h2 className="font-bold text-gray-900 text-sm leading-tight">{selected.name}</h2>
-              {selected.kind === 'sample' || selected.risk === 'LOW' || selected.risk === 'MEDIUM' || selected.risk === 'HIGH' ? (
-                <RiskBadge level={selected.risk as 'LOW' | 'MEDIUM' | 'HIGH'} size="sm" />
-              ) : (
-                <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                  {selected.risk === 'INCOMPLETE' ? 'Risk incomplete' : 'Risk not calculated'}
-                </span>
+      {demoRiskActive && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Demo risk scenario</strong> — map coordinates and river markers continue to use shared live spatial/environmental evidence.
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        <div className="min-w-0 space-y-4">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <GeographicEvidenceMap
+              model={model}
+              communityName={community.name}
+              locationSource={community.locationSource}
+              layers={layers}
+              deviceLocation={deviceLocation}
+              onDeviceLocationChange={setDeviceLocation}
+            />
+          </div>
+
+          <fieldset className="rounded-2xl border border-gray-200 bg-white p-4">
+            <legend className="px-1 text-sm font-semibold text-gray-900">Map layers</legend>
+            <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <LayerToggle
+                label="Assessment location"
+                checked={layers.community}
+                onChange={() => toggleLayer('community')}
+              />
+              {model.riverPoint && (
+                <LayerToggle
+                  label="GloFAS modeled river point"
+                  checked={layers.riverPoint}
+                  onChange={() => toggleLayer('riverPoint')}
+                />
+              )}
+              <LayerToggle
+                label="River-data search radius"
+                checked={layers.searchRadius}
+                onChange={() => toggleLayer('searchRadius')}
+              />
+              {model.evidenceLine && (
+                <LayerToggle
+                  label="Evidence-distance line"
+                  checked={layers.evidenceLine}
+                  onChange={() => toggleLayer('evidenceLine')}
+                />
               )}
             </div>
-            <div className="space-y-2 text-sm mb-4">
-              <InfoRow label="Population" value={selected.population.toLocaleString()} />
-              <InfoRow label={selected.kind === 'sample' ? 'Sample Needs' : 'Operational Needs'} value={selected.needs} />
-              <InfoRow label="Status" value={selected.status} />
-            </div>
-            <div className="border-t border-gray-100 pt-3">
-              <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">All Communities</p>
-              <div className="space-y-1">
-                {communities.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedId(c.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 transition-colors ${selectedId === c.id ? 'bg-blue-50 text-blue-800 font-semibold' : 'hover:bg-gray-50 text-gray-700'}`}
-                  >
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: riskFill[c.risk] }} />
-                    <span className="truncate">{c.name}</span>
-                  </button>
-                ))}
-              </div>
+          </fieldset>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4" aria-label="Map legend">
+            <h2 className="text-sm font-semibold text-gray-900">Legend</h2>
+            <div className="mt-3 grid gap-3 text-xs text-gray-600 sm:grid-cols-2">
+              <LegendItem color="#1e3a5f" label="Assessment location" detail="Saved location used for DeFlood's flood assessment" />
+              {deviceLocation && (
+                <LegendItem color="#2563eb" label="Your current device location" detail="Temporary map-navigation position only; the saved assessment location remains unchanged" />
+              )}
+              <LegendItem color="#0891b2" label="GloFAS modeled river point" detail="Modeled environmental evidence location; not a gauge or sensor" />
+              <LegendItem color="#64748b" label="River-data search radius" detail="15 km evidence-search limit, not flood extent" dashed />
+              <LegendItem color="#7c3aed" label="Evidence-distance line" detail="Point-to-point evidence distance, not a route or river" dashed />
             </div>
           </div>
         </div>
+
+        <aside className="space-y-4" aria-label="Flood map evidence summary">
+          <section className="rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Assessment location</div>
+            <h2 className="mt-1 text-lg font-bold text-gray-900">{community.name}</h2>
+            <div className="mt-3 space-y-2 text-sm">
+              <InfoRow label="Latitude" value={community.latitude.toFixed(5)} mono />
+              <InfoRow label="Longitude" value={community.longitude.toFixed(5)} mono />
+              <InfoRow label="Location source" value={community.locationSource === 'gps' ? 'GPS' : 'Manual'} />
+              {community.locationSource === 'gps' && community.locationAccuracy !== null && (
+                <InfoRow label="Reported accuracy" value={`±${Math.round(community.locationAccuracy)} m`} />
+              )}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Saving a different GPS or manual coordinate updates this map and the shared environmental assessment together.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-gray-200 bg-white p-5" aria-live="polite">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current assessment</div>
+            <div className={`mt-1 text-xl font-bold ${model.presentation.mode === 'LIMITED' ? 'text-amber-700' : 'text-gray-900'}`}>
+              {model.presentation.label}
+            </div>
+            {model.presentation.mode === 'COMPLETE' ? (
+              <div className="mt-3 space-y-2 text-sm">
+                <InfoRow label="Flood Hazard score" value={score(model.hazardScore)} />
+                <InfoRow label="Data Confidence" value={score(model.confidenceScore)} />
+                <InfoRow label="Current modeled discharge" value={measurement(model.currentDischarge, model.dischargeUnit)} />
+                <InfoRow label="River trend" value={model.riverTrend ?? 'Unavailable'} />
+                <InfoRow label="Historical percentile" value={model.riverPercentile === null ? 'Unavailable' : `${model.riverPercentile.toFixed(1)}th`} />
+              </div>
+            ) : model.presentation.mode === 'LIMITED' ? (
+              <div className="mt-3 space-y-2 text-sm">
+                <InfoRow label="Rainfall severity" value={score(model.rainfallSeverity)} />
+                <InfoRow label="Required river evidence" value="Unavailable" />
+                <InfoRow label="Data Confidence" value={score(model.confidenceScore)} />
+                <p className="pt-1 text-xs text-amber-800">Rainfall signal is not the full Flood Hazard score.</p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-gray-600">A complete or limited flood assessment is not currently available.</p>
+            )}
+            <div className="mt-4 border-t border-gray-100 pt-3 text-sm">
+              <InfoRow label="Weather models" value={`${model.usableWeatherModels} / ${model.totalWeatherModels}`} />
+              <InfoRow label="Model agreement" value={model.agreementLabel} />
+            </div>
+            <p className="mt-3 text-xs text-gray-500">Data Confidence describes evidence quality, not flood probability.</p>
+          </section>
+
+          <section className="rounded-2xl border border-gray-200 bg-white p-5">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">River spatial evidence</div>
+            {model.riverPoint ? (
+              <>
+                <div className="mt-2 font-semibold text-cyan-800">GloFAS modeled river point</div>
+                <p className="mt-2 text-sm leading-relaxed text-gray-700">{model.riverPoint.provenanceText}</p>
+                <div className="mt-3 space-y-2 text-sm">
+                  <InfoRow label="Latitude" value={model.riverPoint.coordinate.latitude.toFixed(5)} mono />
+                  <InfoRow label="Longitude" value={model.riverPoint.coordinate.longitude.toFixed(5)} mono />
+                  <InfoRow label="Recorded distance" value={model.riverPoint.distanceKm === null ? 'Unavailable' : `${model.riverPoint.distanceKm.toFixed(1)} km`} />
+                </div>
+                <p className="mt-3 text-xs text-gray-500">This is modeled discharge evidence, not an observed station or river-height gauge.</p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm leading-relaxed text-gray-700">{model.riverUnavailableMessage}</p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
+            <div className="font-semibold text-slate-900">River-data search radius: {model.searchRadiusKm} km</div>
+            <p className="mt-2 leading-relaxed">
+              When the exact community query has no usable GloFAS discharge series, DeFlood searches for eligible modeled river evidence within this maximum radius.
+            </p>
+            <p className="mt-2 text-xs font-medium">This is not flood extent, an inundation area, a hazard radius, or an evacuation zone.</p>
+          </section>
+        </aside>
       </div>
     </div>
   )
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function LayerToggle({ label, checked, onChange }: {
+  label: string
+  checked: boolean
+  onChange: () => void
+}) {
   return (
-    <div className="flex justify-between gap-2">
-      <span className="text-gray-500 shrink-0">{label}</span>
-      <span className="font-medium text-gray-900 text-right">{value}</span>
+    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-gray-700 hover:bg-gray-50">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 rounded border-gray-300 text-blue-700"
+      />
+      <span>{label}</span>
+    </label>
+  )
+}
+
+function LegendItem({ color, label, detail, dashed = false }: {
+  color: string
+  label: string
+  detail: string
+  dashed?: boolean
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <span
+        className={`mt-1 inline-block h-3 w-5 shrink-0 ${dashed ? 'border-t-2 border-dashed' : 'rounded-full'}`}
+        style={dashed ? { borderColor: color } : { backgroundColor: color }}
+        aria-hidden="true"
+      />
+      <span><strong className="text-gray-800">{label}:</strong> {detail}</span>
+    </div>
+  )
+}
+
+function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="shrink-0 text-gray-500">{label}</span>
+      <span className={`text-right font-medium text-gray-900 ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   )
 }
