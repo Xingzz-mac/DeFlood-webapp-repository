@@ -3,7 +3,7 @@ import type { AppUser, Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
 import { useEvacuationPlan } from '../context/EvacuationContext'
-import { riskMeaning } from '../services/riskPresentation'
+import { floodAssessmentPresentation, riskMeaning } from '../services/riskPresentation'
 import {
   IconAlertTriangle,
   IconChevronRight,
@@ -21,16 +21,17 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
   const evacuation = useEvacuationPlan()
-  const hazardLabel = risk.calculationStatus === 'COMPLETE'
-    ? risk.hazardLevel
-    : risk.calculationStatus
+  const presentation = floodAssessmentPresentation(risk)
+  const hazardLabel = presentation.label
   const hazardColor = risk.hazardLevel === 'HIGH'
     ? 'text-red-700'
     : risk.hazardLevel === 'MEDIUM'
       ? 'text-amber-700'
       : risk.hazardLevel === 'LOW'
         ? 'text-green-700'
-        : 'text-gray-700'
+        : presentation.mode === 'LIMITED'
+          ? 'text-amber-700'
+          : 'text-gray-700'
   const lastUpdate = risk.lastMeaningfulDataUpdate
     ? new Date(risk.lastMeaningfulDataUpdate).toLocaleString()
     : 'Unavailable'
@@ -62,9 +63,13 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
                 {risk.loading && risk.calculationStatus === 'NOT_CALCULATED' ? 'Calculating…' : hazardLabel}
               </div>
               <p className="mt-1 text-sm text-gray-600">
-                {risk.hazardScore === null
-                  ? 'Core rainfall and historical river evidence are required; missing evidence is never classified LOW.'
-                  : `Deterministic prototype hazard score: ${risk.hazardScore.toFixed(1)} / 100.`}
+                {presentation.mode === 'LIMITED'
+                  ? `Verified rainfall signal: ${risk.rainfallSeverity?.toFixed(1)} / 100. Required river evidence is unavailable, so no full hazard score is produced.`
+                  : presentation.mode === 'ASSESSMENT_UNAVAILABLE'
+                    ? 'Core rainfall evidence is unavailable; no flood assessment or hazard score is produced.'
+                    : risk.hazardScore === null
+                      ? 'Waiting for environmental evidence; missing evidence is never classified LOW.'
+                      : `Deterministic prototype hazard score: ${risk.hazardScore.toFixed(1)} / 100.`}
               </p>
               <p className="mt-3 text-sm leading-relaxed text-gray-700">{riskMeaning(risk)}</p>
               <div className="mt-4 flex flex-wrap gap-2">

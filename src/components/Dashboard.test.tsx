@@ -103,4 +103,66 @@ describe('Dashboard community-data provenance', () => {
     expect(text).not.toContain('Sample resource count')
     await act(async () => renderer?.unmount())
   })
+
+  it('uses the same limited-assessment wording without creating a hazard score or level', async () => {
+    const base = DEMO_RISK_FIXTURES['demo-medium']
+    const limitedRisk = {
+      ...base,
+      calculationStatus: 'INCOMPLETE' as const,
+      hazardScore: null,
+      hazardLevel: null,
+      riverPercentile: null,
+      riverAbnormality: null,
+      environmentalData: null,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    }
+    useCommunityMock.mockReturnValue({ community, isSampleData: false })
+    useRiskMock.mockReturnValue(limitedRisk)
+    useEvacuationPlanMock.mockReturnValue(calculateEvacuationPlan(community, limitedRisk))
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(
+        <Dashboard user={{ role: 'leader', name: 'Prototype User' }} onNavigate={vi.fn()} />,
+      )
+    })
+    const text = pageText(renderer!.toJSON())
+
+    expect(text).toContain('LIMITED FLOOD ASSESSMENT')
+    expect(text).toContain('Verified rainfall signal: 57.8 / 100')
+    expect(text).not.toContain('INCOMPLETE')
+    expect(text).not.toContain('LOW Flood Hazard')
+    expect(limitedRisk.calculationStatus).toBe('INCOMPLETE')
+    expect(limitedRisk.hazardScore).toBeNull()
+    expect(limitedRisk.hazardLevel).toBeNull()
+    expect(calculateEvacuationPlan(community, limitedRisk).planningStatus).toBe('NOT_READY')
+    await act(async () => renderer?.unmount())
+  })
+
+  it.each([
+    ['demo-low', 'LOW'],
+    ['demo-medium', 'MEDIUM'],
+    ['demo-high', 'HIGH'],
+  ] as const)('keeps complete %s Dashboard hazard wording as %s', async (scenario, expected) => {
+    const risk = {
+      ...DEMO_RISK_FIXTURES[scenario],
+      environmentalData: null,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    }
+    useCommunityMock.mockReturnValue({ community, isSampleData: false })
+    useRiskMock.mockReturnValue(risk)
+    useEvacuationPlanMock.mockReturnValue(calculateEvacuationPlan(community, risk))
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(
+        <Dashboard user={{ role: 'leader', name: 'Prototype User' }} onNavigate={vi.fn()} />,
+      )
+    })
+
+    expect(pageText(renderer!.toJSON())).toContain(expected)
+    await act(async () => renderer?.unmount())
+  })
 })

@@ -1,13 +1,43 @@
 import type { RiskResult } from './riskTypes'
 
-type PresentableRisk = Pick<RiskResult, 'calculationStatus' | 'hazardLevel' | 'contributingFactors'>
+type PresentableRisk = Pick<
+  RiskResult,
+  'calculationStatus' | 'hazardLevel' | 'rainfallSeverity' | 'contributingFactors'
+>
+
+export type FloodAssessmentPresentationMode =
+  | 'NOT_CALCULATED'
+  | 'ASSESSMENT_UNAVAILABLE'
+  | 'LIMITED'
+  | 'COMPLETE'
+
+export interface FloodAssessmentPresentation {
+  mode: FloodAssessmentPresentationMode
+  label: string
+}
+
+export function floodAssessmentPresentation(
+  risk: Pick<RiskResult, 'calculationStatus' | 'hazardLevel' | 'rainfallSeverity'>,
+): FloodAssessmentPresentation {
+  if (risk.calculationStatus === 'NOT_CALCULATED') {
+    return { mode: 'NOT_CALCULATED', label: 'NOT CALCULATED' }
+  }
+  if (risk.calculationStatus === 'INCOMPLETE') {
+    return risk.rainfallSeverity === null
+      ? { mode: 'ASSESSMENT_UNAVAILABLE', label: 'ASSESSMENT UNAVAILABLE' }
+      : { mode: 'LIMITED', label: 'LIMITED FLOOD ASSESSMENT' }
+  }
+  return { mode: 'COMPLETE', label: risk.hazardLevel ?? 'ASSESSMENT UNAVAILABLE' }
+}
 
 export function riskMeaning(risk: PresentableRisk): string {
   if (risk.calculationStatus === 'NOT_CALCULATED') {
     return 'Flood Hazard is waiting for environmental evidence for the saved community.'
   }
   if (risk.calculationStatus === 'INCOMPLETE') {
-    return 'Risk cannot be fully calculated because required rainfall or historical river evidence is unavailable.'
+    return risk.rainfallSeverity === null
+      ? 'Flood assessment is unavailable because usable core rainfall evidence is not currently available.'
+      : 'DeFlood cannot calculate the full Flood Hazard because required modeled river evidence or historical river context is unavailable.'
   }
   const strongestFactor = risk.contributingFactors[0]
   if (risk.hazardLevel === 'LOW') {

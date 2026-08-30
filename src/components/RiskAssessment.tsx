@@ -2,7 +2,11 @@ import type { ReactNode } from 'react'
 import type { Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
-import { riskMeaning, riskNextStep } from '../services/riskPresentation'
+import {
+  floodAssessmentPresentation,
+  riskMeaning,
+  riskNextStep,
+} from '../services/riskPresentation'
 import { calculateFreshness } from '../services/riskScoring'
 import { riverModelLocationText } from '../services/riverSpatial'
 import type {
@@ -227,6 +231,105 @@ function ScoreValue({ value }: { value: number | null }) {
   )
 }
 
+function consensusValue(risk: RiskResult, hours: 24 | 72): number | null {
+  return risk.weatherConsensus.horizons.find(horizon => horizon.hours === hours)?.value ?? null
+}
+
+function LimitedFloodAssessmentCard({
+  risk,
+  data,
+}: {
+  risk: RiskResult
+  data: EnvironmentalData | null
+}) {
+  const rain24 = consensusValue(risk, 24)
+  const rain72 = consensusValue(risk, 72)
+  const riverExplanation = data?.river.riverLookupMode === 'UNAVAILABLE'
+    ? riverModelLocationText(data.river)
+    : risk.sourceInformation.historical !== 'available'
+      ? 'Historical same-month river context is unavailable for the modeled river location.'
+      : 'Required current modeled river evidence is unavailable.'
+
+  return (
+    <section className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5" aria-labelledby="limited-flood-assessment">
+      <div className="flex items-start gap-3">
+        <IconAlertTriangle size={21} className="mt-0.5 shrink-0 text-amber-700" />
+        <div className="min-w-0 flex-1">
+          <h2 id="limited-flood-assessment" className="font-bold tracking-wide text-amber-950">
+            LIMITED FLOOD ASSESSMENT
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900">
+            DeFlood cannot calculate the full Flood Hazard because representative modeled river evidence is unavailable.
+          </p>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-amber-200 bg-white/80 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">Rainfall signal</h3>
+              <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <div className="text-xs text-gray-500">Existing rainfall severity</div>
+                  <div className="mt-1 font-mono font-bold text-gray-900">{risk.rainfallSeverity?.toFixed(1)} / 100</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">24-hour consensus</div>
+                  <div className="mt-1 font-mono font-bold text-gray-900">{fmtNumber(rain24, 'mm')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">72-hour consensus</div>
+                  <div className="mt-1 font-mono font-bold text-gray-900">{fmtNumber(rain72, 'mm')}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Models available</div>
+                  <div className="mt-1 font-bold text-gray-900">
+                    {risk.weatherConsensus.usableModelCount} / {risk.weatherConsensus.totalConfiguredModelCount}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Model agreement</div>
+                  <div className="mt-1 font-bold text-gray-900">{risk.modelAgreement.label}</div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs font-medium text-amber-800">
+                Rainfall signal is not the full Flood Hazard score.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white/80 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">River evidence</h3>
+              <div className="mt-2 font-bold text-gray-700">Unavailable</div>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">{riverExplanation}</p>
+              <p className="mt-3 text-xs font-medium text-gray-700">
+                River-related flood risk cannot currently be quantified.
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs leading-relaxed text-amber-900">
+            The full DeFlood Flood Hazard combines rainfall evidence with modeled river conditions and historical river context. When representative river evidence is unavailable, DeFlood shows the verified rainfall evidence instead of estimating a full hazard score.
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function AssessmentUnavailableCard() {
+  return (
+    <section className="mb-5 rounded-2xl border border-gray-300 bg-gray-50 p-5" aria-labelledby="assessment-unavailable">
+      <div className="flex items-start gap-3">
+        <IconAlertTriangle size={21} className="mt-0.5 shrink-0 text-gray-600" />
+        <div>
+          <h2 id="assessment-unavailable" className="font-bold tracking-wide text-gray-900">ASSESSMENT UNAVAILABLE</h2>
+          <p className="mt-1 text-sm leading-relaxed text-gray-700">
+            DeFlood cannot calculate the Flood Hazard or show a limited rainfall assessment because usable core rainfall evidence is unavailable.
+          </p>
+          <p className="mt-2 text-xs font-medium text-gray-600">No LOW, MEDIUM, or HIGH hazard has been assigned.</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 interface ExplanationItem {
   id: string
   label: string
@@ -417,11 +520,13 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
     && riverFreshness.ageMs !== null
     && riverFreshness.ageMs > riverFreshness.maxAgeMs
   const demoRiverUnavailable = risk.engineVersion === 'deflood-dev-scenario-v1'
-  const statusLabel = risk.calculationStatus === 'COMPLETE'
-    ? `${risk.hazardLevel} Flood Hazard`
-    : risk.calculationStatus === 'INCOMPLETE'
-      ? 'Incomplete hazard evidence'
-      : 'Not calculated'
+  const presentation = floodAssessmentPresentation(risk)
+  const statusLabel = presentation.mode === 'COMPLETE'
+    ? `${presentation.label} Flood Hazard`
+    : presentation.label
+  const statusStyle = presentation.mode === 'LIMITED'
+    ? 'bg-amber-100 text-amber-800'
+    : 'bg-gray-100 text-gray-700'
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-6">
@@ -433,7 +538,7 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle}`}>
             {statusLabel}
           </span>
           <button
@@ -476,21 +581,27 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
         </div>
       )}
 
+      {presentation.mode === 'LIMITED' && <LimitedFloodAssessmentCard risk={risk} data={data} />}
+      {presentation.mode === 'ASSESSMENT_UNAVAILABLE' && <AssessmentUnavailableCard />}
+
       <div className="mb-5 grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Flood Hazard</div>
           <div className="mt-1 text-2xl font-bold text-gray-900">
-            {risk.calculationStatus === 'COMPLETE' ? risk.hazardLevel : risk.calculationStatus}
+            {presentation.label}
           </div>
           <div className="mt-2"><ScoreValue value={risk.hazardScore} /></div>
-          {risk.calculationStatus === 'INCOMPLETE' && (
-            <p className="mt-2 text-xs text-amber-700">Missing core evidence is never converted into LOW.</p>
+          {presentation.mode === 'LIMITED' && (
+            <p className="mt-2 text-xs text-amber-700">Rainfall signal is not the full Flood Hazard score.</p>
+          )}
+          {presentation.mode === 'ASSESSMENT_UNAVAILABLE' && (
+            <p className="mt-2 text-xs text-gray-600">Missing core evidence is never converted into LOW.</p>
           )}
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Data Confidence</div>
           <div className="mt-1"><ScoreValue value={risk.calculationStatus === 'NOT_CALCULATED' ? null : risk.confidenceScore} /></div>
-          <p className="mt-2 text-xs text-gray-500">Evidence quality, not flood probability.</p>
+          <p className="mt-2 text-xs text-gray-500">Data Confidence describes evidence quality, not flood probability.</p>
         </div>
       </div>
 

@@ -91,7 +91,7 @@ function fourModelEnvironmentalData(): EnvironmentalData {
 }
 
 describe('Risk Assessment information hierarchy', () => {
-  it('is informative while supporting data is collapsed and gives incomplete-evidence recovery guidance', async () => {
+  it('renders assessment unavailable when core rainfall evidence is unavailable', async () => {
     contextMocks.useCommunity.mockReturnValue({
       community: { name: 'Test Community', latitude: 16.5, longitude: 95 },
     })
@@ -115,9 +115,12 @@ describe('Risk Assessment information hierarchy', () => {
     expect(supportingData.props.open).toBeUndefined()
     const pageText = textContent(renderer!.toJSON())
     expect(pageText).toContain('Flood Hazard')
+    expect(pageText).toContain('ASSESSMENT UNAVAILABLE')
+    expect(pageText).not.toContain('LIMITED FLOOD ASSESSMENT')
+    expect(pageText).not.toContain('Existing rainfall severity')
     expect(pageText).toContain('Data Confidence')
     expect(pageText).toContain('What this means')
-    expect(pageText).toContain('Risk cannot be fully calculated')
+    expect(pageText).toContain('usable core rainfall evidence')
     expect(pageText).toContain('Review missing evidence or retry unavailable sources')
     expect(pageText).toContain('Modeled river discharge outlook')
     expect(pageText).toContain('River discharge outlook unavailable.')
@@ -132,6 +135,59 @@ describe('Risk Assessment information hierarchy', () => {
     expect(pageText).toContain('IFS:')
     expect(pageText).toContain('GFS:')
     expect(pageText).toContain('UKMO:')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('renders a limited assessment with existing rainfall evidence and truthful unavailable river evidence', async () => {
+    const base = DEMO_RISK_FIXTURES['demo-medium']
+    const limitedRisk = {
+      ...base,
+      calculationStatus: 'INCOMPLETE' as const,
+      hazardScore: null,
+      hazardLevel: null,
+      riverPercentile: null,
+      riverAbnormality: null,
+      sourceInformation: {
+        ...base.sourceInformation,
+        river: 'unavailable' as const,
+        historical: 'unavailable' as const,
+      },
+      contributingFactors: [
+        'No representative modeled river evidence is available.',
+        ...base.contributingFactors,
+      ],
+      environmentalData: fourModelEnvironmentalData(),
+      stale: false,
+      degraded: true,
+      error: null,
+      loading: false,
+      refresh: vi.fn(),
+    }
+    contextMocks.useCommunity.mockReturnValue({
+      community: { name: 'Test Community', latitude: 16.5, longitude: 95 },
+    })
+    contextMocks.useRisk.mockReturnValue(limitedRisk)
+
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(<RiskAssessment onNavigate={vi.fn()} />)
+    })
+    const normalizedText = textContent(renderer!.toJSON()).replace(/\s+/g, ' ')
+
+    expect(limitedRisk.calculationStatus).toBe('INCOMPLETE')
+    expect(limitedRisk.hazardScore).toBeNull()
+    expect(limitedRisk.hazardLevel).toBeNull()
+    expect(normalizedText).toContain('LIMITED FLOOD ASSESSMENT')
+    expect(normalizedText).toContain('Existing rainfall severity 57.8 / 100')
+    expect(normalizedText).toContain('24-hour consensus 36.0 mm')
+    expect(normalizedText).toContain('72-hour consensus 98.0 mm')
+    expect(normalizedText).toContain('Models available 4 / 4')
+    expect(normalizedText).toContain('Model agreement Moderate')
+    expect(normalizedText).toContain('Rainfall signal is not the full Flood Hazard score.')
+    expect(normalizedText).toContain('River evidence Unavailable')
+    expect(normalizedText).toContain('No usable GloFAS river point was found within the nearby search radius.')
+    expect(normalizedText).toContain('River-related flood risk cannot currently be quantified.')
+    expect(normalizedText).not.toContain('Final Flood Hazard score')
     await act(async () => renderer?.unmount())
   })
 
