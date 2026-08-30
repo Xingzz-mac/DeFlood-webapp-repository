@@ -62,6 +62,24 @@ describe('evacuation planning chat service', () => {
     expect(localEvacuationChatResponse('so')?.content).toBe(EVACUATION_CHAT_SO_RESPONSE)
   })
 
+  it.each([
+    'thank you',
+    'thank u',
+    'Thanks!',
+    'thx',
+    'ty',
+    'THANK U!!',
+  ])('classifies the simple acknowledgement %s as local thanks', (message) => {
+    expect(localEvacuationChatResponse(message)).toEqual({
+      intent: 'THANKS',
+      content: "You're welcome. You can ask me about the current risk, resources, missing information, or recommended planning actions.",
+    })
+  })
+
+  it('does not swallow a thanks-prefixed real question', () => {
+    expect(localEvacuationChatResponse('thank you, but what should I do now?')).toBeNull()
+  })
+
   it('does not classify meaningful flood and planning questions as local filler', () => {
     for (const question of [
       'tell me about the current state',

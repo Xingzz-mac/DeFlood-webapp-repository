@@ -117,7 +117,14 @@ describe('Ask DeFlood AI interface', () => {
     await act(async () => renderer?.unmount())
   })
 
-  it('answers thanks locally without calling the workflow', async () => {
+  it.each([
+    'thank you',
+    'thank u',
+    'Thanks!',
+    'thx',
+    'ty',
+    'THANK U!!',
+  ])('answers %s locally without calling the workflow', async (message) => {
     const risk = DEMO_RISK_FIXTURES['demo-low']
     const currentCommunity = community()
     const plan = calculateEvacuationPlan(currentCommunity, risk)
@@ -127,12 +134,39 @@ describe('Ask DeFlood AI interface', () => {
       renderer = renderChat(risk, currentCommunity, plan, requester)
     })
 
-    await send(renderer!, 'thank you!')
+    await send(renderer!, message)
 
     const text = pageText(renderer!.toJSON())
     expect(text).toContain(EVACUATION_CHAT_THANKS_RESPONSE)
     expect(text).not.toContain('That information is not available')
     expect(requester).not.toHaveBeenCalled()
+    await act(async () => renderer?.unmount())
+  })
+
+  it('keeps a thanks-prefixed planning question in the grounded backend flow', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const trustedAction = plan.allowedActions[0]!
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'ACTIONS',
+      facts: [],
+      actions: [trustedAction],
+      missingInformation: [],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester)
+    })
+
+    const question = 'thank you, but what should I do now?'
+    await send(renderer!, question)
+
+    expect(requester).toHaveBeenCalledTimes(1)
+    expect((requester.mock.calls[0]?.[0] as EvacuationChatPayload).message).toBe(question)
+    expect(pageText(renderer!.toJSON())).toContain(trustedAction.text)
     await act(async () => renderer?.unmount())
   })
 

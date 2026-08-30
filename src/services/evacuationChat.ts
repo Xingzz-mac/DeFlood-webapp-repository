@@ -134,7 +134,7 @@ export function localEvacuationChatResponse(message: string): EvacuationChatLoca
   if (/^(hi|hello|hey|good morning|good afternoon|good evening)( there)?$/.test(normalized)) {
     return { intent: 'GREETING', content: EVACUATION_CHAT_RESPONSE_LEADS.GREETING }
   }
-  if (/^(thanks|thank you|thanks so much|thank you so much)$/.test(normalized)) {
+  if (/^(thanks|thank (?:you|u)|thanks so much|thank (?:you|u) so much|thx|ty)$/.test(normalized)) {
     return { intent: 'THANKS', content: EVACUATION_CHAT_THANKS_RESPONSE }
   }
   if (/^(?:(?:i'm|i am|i feel) (?:really )?(?:worried|scared|nervous|anxious)|this (?:is|feels) worrying)$/.test(normalized)) {
