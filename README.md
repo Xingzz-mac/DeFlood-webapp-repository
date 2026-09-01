@@ -1,6 +1,20 @@
 # DeFlood.AI
 
-DeFlood.AI is a React, Vite, TypeScript, and Tailwind prototype for community flood preparedness in Myanmar.
+AI-assisted flood preparedness and evacuation-support platform designed for flood-prone communities in Myanmar.
+
+🌐 Live Demo: https://deflood-ai.pages.dev/
+💻 Tech: React · TypeScript · Vite · Open-Meteo · GloFAS · n8n · Groq · Cloudflare Workers
+
+What it does
+Combines multiple weather models to assess flood-related conditions.
+Uses river-discharge, rainfall and elevation data in a deterministic flood-risk engine.
+Generates resource-aware evacuation-planning guidance.
+Optionally uses AI to assist with planning while keeping deterministic safety constraints.
+Provides community, support-network and flood-map interfaces.
+Project Context
+
+Developed as DeFlood.AI for the Myanmar Youth AI Competition 2026 — Social Innovation category.
+
 
 ## Current implementation
 
