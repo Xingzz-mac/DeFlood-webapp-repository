@@ -6,7 +6,7 @@ AI-assisted flood preparedness and evacuation-support platform designed for floo
 
 💻 Tech: React · TypeScript · Vite · Open-Meteo · GloFAS · n8n · Groq · Cloudflare Workers
 
-## What it does:
+## What it does
 
 1. Combines multiple weather models to assess flood-related conditions.
    
@@ -18,7 +18,7 @@ AI-assisted flood preparedness and evacuation-support platform designed for floo
    
 5. Provides community, support-network and flood-map interfaces.
    
-## Project Context:
+## Project Context
 
 Developed as DeFlood.AI for the Myanmar Youth AI Competition 2026 — Social Innovation category.
 
