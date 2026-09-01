@@ -22,6 +22,8 @@ AI-assisted flood preparedness and evacuation-support platform designed for floo
 
 Developed as DeFlood.AI for the Myanmar Youth AI Competition 2026 — Social Innovation category.
 
+<img width="1470" height="837" alt="image" src="https://github.com/user-attachments/assets/b7ab1e30-fea5-48d8-8f1a-27f2e19154dc" />
+
 
 ## Current implementation
 
