@@ -3,15 +3,16 @@ import { IconAlertTriangle, IconCheckCircle } from './Icons'
 
 export default function SupportNetwork() {
   const plan = useEvacuationPlan()
-  const confirmedWarnings = plan.resourceWarnings.filter(
-    warning => warning !== 'Transport capacity cannot be assessed from vehicle and boat counts alone.',
+  const sample = plan.dataProvenance === 'SAMPLE'
+  const displayedWarnings = plan.resourceWarnings.filter(
+    warning => !warning.startsWith('Transport capacity cannot be assessed from'),
   )
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-6">
       <div className="mb-5">
         <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Support Network</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Confirmed planning gaps from the deterministic evacuation planner</p>
+        <p className="mt-0.5 text-sm text-gray-500">{sample ? 'Sample planning gaps' : 'Confirmed planning gaps'} from the deterministic evacuation planner</p>
       </div>
 
       <div className="mb-5 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm">
@@ -24,16 +25,18 @@ export default function SupportNetwork() {
       <section className="rounded-2xl border border-gray-200 bg-white p-5">
         <div className="flex items-center gap-2">
           <IconCheckCircle size={18} className="text-blue-700" />
-          <h2 className="font-semibold text-gray-900">Confirmed resource gaps</h2>
+          <h2 className="font-semibold text-gray-900">{sample ? 'Sample resource gaps' : 'Confirmed resource gaps'}</h2>
         </div>
-        {confirmedWarnings.length > 0 ? (
+        {displayedWarnings.length > 0 ? (
           <ul className="mt-4 space-y-2 text-sm text-gray-700">
-            {confirmedWarnings.map(warning => (
+            {displayedWarnings.map(warning => (
               <li key={warning} className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">{warning}</li>
             ))}
           </ul>
         ) : (
-          <p className="mt-4 text-sm text-gray-600">No confirmed resource gap is currently derived from the supplied community information.</p>
+          <p className="mt-4 text-sm text-gray-600">{sample
+            ? 'No sample resource gap is currently derived from the demonstration data.'
+            : 'No confirmed resource gap is currently derived from the supplied community information.'}</p>
         )}
 
         <button

@@ -21,6 +21,8 @@ describe('DeFlood Guardian package boundaries', () => {
     ['src/assets/mascot/deflood-guardian-hover.png', '3e606f3d61db0d7d888c53ece72f6011a9491fca21c627e5bdcfb87b7817ce04'],
   ])('uses the unchanged official mascot asset %s', (relativePath, expectedHash) => {
     const asset = fs.readFileSync(path.join(repositoryRoot, relativePath))
+    expect(asset.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    expect(asset.subarray(0, 42).toString('utf8')).not.toBe('version https://git-lfs.github.com/spec/v1')
     expect(createHash('sha256').update(asset).digest('hex')).toBe(expectedHash)
   })
 

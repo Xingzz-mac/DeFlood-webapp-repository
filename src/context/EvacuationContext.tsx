@@ -7,11 +7,11 @@ import type { EvacuationPlanResult } from '../services/evacuationTypes'
 const EvacuationContext = createContext<EvacuationPlanResult | null>(null)
 
 export function EvacuationProvider({ children }: { children: ReactNode }) {
-  const { community } = useCommunity()
+  const { community, isSampleData } = useCommunity()
   const risk = useRisk()
   const plan = useMemo(
-    () => calculateEvacuationPlan(community, risk),
-    [community, risk],
+    () => calculateEvacuationPlan(community, risk, isSampleData ? 'SAMPLE' : 'USER_CONFIRMED'),
+    [community, isSampleData, risk],
   )
   return <EvacuationContext.Provider value={plan}>{children}</EvacuationContext.Provider>
 }

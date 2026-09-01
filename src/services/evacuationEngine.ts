@@ -1,5 +1,6 @@
 import { rankImmediatePlanningPriorities, selectAllowedActions } from './allowedActions'
 import type {
+  DataProvenance,
   EvacuationCommunityInput,
   EvacuationPlanResult,
   EvacuationRiskInput,
@@ -31,17 +32,22 @@ function priorityGroupsFor(community: EvacuationCommunityInput): PriorityGroup[]
   })
 }
 
-function supplyGap(label: string, value: string | null | undefined): string | null {
+function supplyGap(
+  label: string,
+  value: string | null | undefined,
+  dataProvenance: DataProvenance,
+): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim().toLowerCase()
   return ['limited', 'critical', 'none'].includes(normalized)
-    ? `Reported ${label} supply is ${normalized}.`
+    ? `${dataProvenance === 'SAMPLE' ? 'Sample' : 'Reported'} ${label} supply is ${normalized}.`
     : null
 }
 
 export function calculateEvacuationPlan(
   community: EvacuationCommunityInput,
   risk: EvacuationRiskInput,
+  dataProvenance: DataProvenance = 'USER_CONFIRMED',
 ): EvacuationPlanResult {
   const planningStatus = planningStatusFor(risk)
   const population = nonNegative(community.population)
@@ -88,17 +94,25 @@ export function calculateEvacuationPlan(
 
   const resourceWarnings: string[] = []
   if (shortageConfirmed) {
-    resourceWarnings.push(`Reported shelter capacity is short by ${shortage.toLocaleString()} places.`)
+    resourceWarnings.push(dataProvenance === 'SAMPLE'
+      ? `Sample shelter capacity is short by ${shortage.toLocaleString()} places.`
+      : `Reported shelter capacity is short by ${shortage.toLocaleString()} places.`)
   }
   if (transportCapacityUnknown) {
-    resourceWarnings.push('Transport capacity cannot be assessed from vehicle and boat counts alone.')
+    resourceWarnings.push(dataProvenance === 'SAMPLE'
+      ? 'Transport capacity cannot be assessed from sample vehicle and boat counts alone.'
+      : 'Transport capacity cannot be assessed from vehicle and boat counts alone.')
   }
-  if (volunteers === 0) resourceWarnings.push('No available volunteers are recorded in Community Information.')
+  if (volunteers === 0) {
+    resourceWarnings.push(dataProvenance === 'SAMPLE'
+      ? 'The sample data records no available volunteers.'
+      : 'No available volunteers are recorded in Community Information.')
+  }
   const supplyWarnings = [
-    supplyGap('drinking water', community.water),
-    supplyGap('food', community.food),
-    supplyGap('medicine', community.medicine),
-    supplyGap('emergency equipment', community.equipment),
+    supplyGap('drinking water', community.water, dataProvenance),
+    supplyGap('food', community.food, dataProvenance),
+    supplyGap('medicine', community.medicine, dataProvenance),
+    supplyGap('emergency equipment', community.equipment, dataProvenance),
   ].filter((warning): warning is string => warning !== null)
   resourceWarnings.push(...supplyWarnings)
 
@@ -124,6 +138,7 @@ export function calculateEvacuationPlan(
       boats,
       volunteers,
       priorityGroups,
+      dataProvenance,
     },
   )
   const immediatePriorities = rankImmediatePlanningPriorities(allowedActions, planningStatus)
@@ -151,6 +166,7 @@ export function calculateEvacuationPlan(
           ]
 
   return {
+    dataProvenance,
     planningStatus,
     riskStatus: risk.calculationStatus,
     hazardLevel: risk.calculationStatus === 'COMPLETE' ? risk.hazardLevel : null,

@@ -42,6 +42,7 @@ describe('Settings prototype truthfulness', () => {
       'Flood Hazard and Data Confidence are calculated using the current DeFlood prototype risk engine. Thresholds are experimental and not operationally validated.',
     )
     expect(text).not.toContain('No flood-risk calculation has been implemented yet.')
+    expect(text).toContain('ECMWF AIFS, ECMWF IFS, NOAA GFS, and UKMO')
     await act(async () => renderer?.unmount())
   })
 

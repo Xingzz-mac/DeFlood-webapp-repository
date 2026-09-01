@@ -1,6 +1,7 @@
 import type {
   AllowedAction,
   AllowedActionId,
+  DataProvenance,
   PlanningStatus,
   PriorityGroup,
 } from './evacuationTypes'
@@ -65,6 +66,7 @@ interface ActionEligibility {
 }
 
 export interface AllowedActionFacts {
+  dataProvenance: DataProvenance
   hazardLevel: FloodHazardLevel | null
   population: number | null
   shelterCapacity: number | null
@@ -94,30 +96,37 @@ function pluralized(count: number, singular: string, plural = `${singular}s`): s
 function contextualAction(id: AllowedActionId, facts: AllowedActionFacts): AllowedAction {
   const registered = ALLOWED_ACTION_REGISTRY[id]
   let text = registered.text
+  const sample = facts.dataProvenance === 'SAMPLE'
 
   if (id === 'monitor-risk' && facts.hazardLevel) {
     text = `Continue monitoring the shared ${facts.hazardLevel} Flood Hazard and source updates.`
   }
   if (id === 'review-evacuation-readiness' && facts.population !== null) {
-    text = `Review evacuation readiness and reported resources for ${formatNumber(facts.population)} residents.`
+    text = sample
+      ? `Review evacuation readiness using the sample community inputs for ${formatNumber(facts.population)} residents.`
+      : `Review evacuation readiness and reported resources for ${formatNumber(facts.population)} residents.`
   }
   if (id === 'prioritize-vulnerable' && facts.priorityGroups.length > 0) {
     const groups = facts.priorityGroups.map(group => (
       `${formatNumber(group.count)} ${group.label.toLowerCase()}`
     ))
-    text = `Plan assistance for the recorded priority groups: ${readableList(groups)}. These categories may overlap and must not be summed into a unique total.`
+    text = `Plan assistance for the ${sample ? 'sample' : 'recorded'} priority groups: ${readableList(groups)}. These categories may overlap and must not be summed into a unique total.`
   }
   if (id === 'verify-shelter') {
     if (facts.shelterCount !== null && facts.shelterCapacity !== null) {
-      text = `Verify operational status for ${pluralized(facts.shelterCount, 'recorded shelter')} with reported capacity of ${formatNumber(facts.shelterCapacity)} places using trusted local sources.`
+      text = sample
+        ? `Verify the sample inventory of ${pluralized(facts.shelterCount, 'shelter')} and sample capacity of ${formatNumber(facts.shelterCapacity)} places using trusted local sources.`
+        : `Verify operational status for ${pluralized(facts.shelterCount, 'recorded shelter')} with reported capacity of ${formatNumber(facts.shelterCapacity)} places using trusted local sources.`
     } else if (facts.shelterCount !== null) {
-      text = `Verify operational status for ${pluralized(facts.shelterCount, 'recorded shelter')} with trusted local sources.`
+      text = sample
+        ? `Verify the sample inventory of ${pluralized(facts.shelterCount, 'shelter')} and operational status with trusted local sources.`
+        : `Verify operational status for ${pluralized(facts.shelterCount, 'recorded shelter')} with trusted local sources.`
     } else if (facts.shelterCapacity !== null) {
-      text = `Verify the reported shelter capacity of ${formatNumber(facts.shelterCapacity)} places and shelter operational status with trusted local sources.`
+      text = `Verify the ${sample ? 'sample' : 'reported'} shelter capacity of ${formatNumber(facts.shelterCapacity)} places and shelter operational status with trusted local sources.`
     }
   }
   if (id === 'seek-additional-shelter-support' && facts.shelterShortage !== null) {
-    text = `Plan additional shelter support for the confirmed shortfall of ${formatNumber(facts.shelterShortage)} places.`
+    text = `Plan additional shelter support for the ${sample ? 'sample' : 'confirmed'} shortfall of ${formatNumber(facts.shelterShortage)} places.`
   }
   if (id === 'verify-transport-capacity') {
     const inventory = [
@@ -129,11 +138,17 @@ function contextualAction(id: AllowedActionId, facts: AllowedActionFacts): Allow
         : null,
     ].filter((detail): detail is string => detail !== null)
     if (inventory.length > 0) {
-      text = `Verify carrying capacity and availability for the ${readableList(inventory)} before estimating transport capability.`
+      text = sample
+        ? `Verify carrying capacity and availability for the sample inventory of ${readableList(inventory.map(item => item.replace('recorded ', '')))} before estimating transport capability.`
+        : `Verify carrying capacity and availability for the ${readableList(inventory)} before estimating transport capability.`
     }
   }
-  if (id === 'prepare-support-request' && facts.shelterShortage !== null && facts.shelterShortage > 0) {
-    text = `Prepare a draft support request that includes the confirmed shelter shortfall of ${formatNumber(facts.shelterShortage)} places; no request is sent automatically.`
+  if (id === 'prepare-support-request') {
+    if (facts.shelterShortage !== null && facts.shelterShortage > 0) {
+      text = `Prepare a draft support request that includes the ${sample ? 'sample' : 'confirmed'} shelter shortfall of ${formatNumber(facts.shelterShortage)} places; no request is sent automatically.`
+    } else if (sample) {
+      text = 'Prepare a draft support request for sample resource gaps; no request is sent automatically.'
+    }
   }
 
   return { ...registered, text }

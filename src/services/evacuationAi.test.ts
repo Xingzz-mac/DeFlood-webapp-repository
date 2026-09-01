@@ -67,6 +67,7 @@ describe('optional evacuation AI workflow', () => {
     ])
     const payload = buildEvacuationAiPayload(plan, community, risk)
     expect(payload).toMatchObject({
+      dataProvenance: 'USER_CONFIRMED',
       riskLevel: 'HIGH',
       population: 1000,
       children: 120,
@@ -115,6 +116,20 @@ describe('optional evacuation AI workflow', () => {
       boats: 4,
       vehicles: 13,
     })
+  })
+
+  it('sends sample provenance and sample-qualified actions without adding PII', () => {
+    const samplePlan = calculateEvacuationPlan(community, risk, 'SAMPLE')
+    const payload = buildEvacuationAiPayload(samplePlan, community, risk)
+    const serialized = JSON.stringify(payload)
+
+    expect(payload.dataProvenance).toBe('SAMPLE')
+    expect(payload.shelterShortage).toBe(plan.shelter.shortage)
+    expect(payload.allowedActions.map(action => action.id)).toEqual(plan.allowedActions.map(action => action.id))
+    expect(payload.allowedActions.map(action => action.text).join(' ')).toContain('sample shortfall')
+    expect(payload.allowedActions.map(action => action.text).join(' ')).not.toContain('confirmed shortfall')
+    expect(serialized).not.toContain('PRIVATE LEADER NAME')
+    expect(serialized).not.toContain('PRIVATE PHONE NUMBER')
   })
 
   it('does not display rejected or unregistered action IDs', async () => {

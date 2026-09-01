@@ -64,7 +64,11 @@ function setPlanningContext(
   risk: RiskContextValue,
   isSampleData = false,
 ) {
-  const plan = calculateEvacuationPlan(currentCommunity, risk)
+  const plan = calculateEvacuationPlan(
+    currentCommunity,
+    risk,
+    isSampleData ? 'SAMPLE' : 'USER_CONFIRMED',
+  )
   useCommunityMock.mockReturnValue({ community: currentCommunity, isSampleData })
   useRiskMock.mockReturnValue(risk)
   useEvacuationPlanMock.mockReturnValue(plan)
@@ -186,7 +190,9 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
     expect(sampleText).toContain('Demo community data — planning results are derived from sample inputs.')
     expect(sampleText).toContain('Sample-data shortage')
     expect(sampleText).toContain('Sample-data shelter shortfall')
+    expect(sampleText).toContain('All app-validated sample-data planning actions')
     expect(sampleText).not.toContain('Confirmed shelter shortfall')
+    expect(sampleText).not.toContain('confirmed shortfall')
 
     const confirmedPlan = setPlanningContext(currentCommunity, risk, false)
     await act(async () => {
@@ -200,7 +206,9 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
     expect(confirmedPlan.shelter).toEqual(samplePlan.shelter)
     expect(confirmedPlan.transport).toEqual(samplePlan.transport)
     expect(confirmedPlan.priorityGroups).toEqual(samplePlan.priorityGroups)
-    expect(confirmedPlan.immediatePriorities).toEqual(samplePlan.immediatePriorities)
+    expect(confirmedPlan.immediatePriorities.map(action => action.id)).toEqual(
+      samplePlan.immediatePriorities.map(action => action.id),
+    )
     await act(async () => renderer?.unmount())
   })
 })

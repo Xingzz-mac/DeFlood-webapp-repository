@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "test": "vitest run --config vitest.config.ts",
+    "verify:images": "node scripts/verify-official-images.mjs",
+    "test": "pnpm run verify:images && vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build",
+    "build": "pnpm run verify:images && tsc --noEmit && vite build",
     "preview": "vite preview",
     "format": "oxfmt",
     "guardian:dev": "pnpm --dir desktop/deflood-guardian dev",

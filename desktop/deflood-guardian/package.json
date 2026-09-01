@@ -10,7 +10,7 @@
     "dev": "pnpm run build && electron .",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "build": "tsc --project tsconfig.json && node scripts/copy-assets.mjs",
+    "build": "node ../../scripts/verify-official-images.mjs && tsc --project tsconfig.json && node scripts/copy-assets.mjs",
     "pack": "pnpm run build && electron-builder --dir --publish never",
     "dist:mac": "pnpm run build && electron-builder --mac zip --publish never",
     "dist:win": "pnpm run build && electron-builder --win nsis --publish never",

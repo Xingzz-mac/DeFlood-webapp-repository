@@ -49,6 +49,7 @@ const community: CommunityData = {
 
 const highRisk = DEMO_RISK_FIXTURES['demo-high']
 const highPlan = calculateEvacuationPlan(community, highRisk)
+const sampleHighPlan = calculateEvacuationPlan(community, highRisk, 'SAMPLE')
 
 function response(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response
@@ -106,6 +107,7 @@ describe('evacuation planning chat service', () => {
     )
     expect(payload).toMatchObject({
       message: 'What should I verify?',
+      dataProvenance: 'USER_CONFIRMED',
       risk: {
         status: 'COMPLETE',
         hazardLevel: 'HIGH',
@@ -152,6 +154,66 @@ describe('evacuation planning chat service', () => {
     expect(payload.trustedFacts).toContainEqual({
       id: 'shelter.operational-status',
       text: 'Shelter operational status is unknown. Reported shelter inventory and capacity do not establish whether any shelter is operational.',
+    })
+  })
+
+  it('grounds seeded sample values as demonstration data throughout the chat payload', () => {
+    const payload = buildEvacuationChatPayload(
+      'What are our resource gaps?',
+      [],
+      highRisk,
+      community,
+      sampleHighPlan,
+    )
+    const trustedText = payload.trustedFacts.map(fact => fact.text).join(' ')
+    const actionText = payload.allowedActions.map(action => action.text).join(' ')
+
+    expect(payload.dataProvenance).toBe('SAMPLE')
+    expect(payload.evacuationPlan.dataProvenance).toBe('SAMPLE')
+    expect(payload.shelterGrounding.operationalStatusMeaning).toContain('Sample shelter inventory')
+    expect(payload.trustedFacts).toContainEqual({
+      id: 'shelter.operational-status',
+      text: 'Shelter operational status is unknown. Sample shelter inventory and capacity do not establish whether any shelter is operational.',
+    })
+    expect(payload.trustedFacts).toContainEqual({
+      id: 'planning.data-provenance',
+      text: 'Community and resource values are seeded sample demonstration data and are not user-confirmed.',
+    })
+    expect(payload.trustedFacts).toContainEqual({
+      id: 'shelter.capacity-shortfall',
+      text: 'The sample shelter capacity has a sample shortfall of 800 places.',
+    })
+    expect(trustedText).toContain('Current sample resource warnings, based on demonstration data')
+    expect(trustedText).not.toMatch(/confirmed shortfall|verified resource warning/i)
+    expect(actionText).toContain('sample shortfall of 800 places')
+    expect(actionText).not.toMatch(/confirmed (?:shortfall|gap)/i)
+    expect(payload.community).not.toHaveProperty('leader')
+    expect(payload.community).not.toHaveProperty('phone')
+  })
+
+  it('restores user-confirmed wording while preserving the same numeric plan', () => {
+    const samplePayload = buildEvacuationChatPayload('Question', [], highRisk, community, sampleHighPlan)
+    const confirmedPayload = buildEvacuationChatPayload('Question', [], highRisk, community, highPlan)
+
+    expect(confirmedPayload.dataProvenance).toBe('USER_CONFIRMED')
+    expect(confirmedPayload.evacuationPlan.shelter).toEqual(samplePayload.evacuationPlan.shelter)
+    expect(confirmedPayload.allowedActions.map(action => action.id)).toEqual(
+      samplePayload.allowedActions.map(action => action.id),
+    )
+    expect(confirmedPayload.allowedActions.map(action => action.text).join(' ')).toContain('confirmed shortfall')
+  })
+
+  it('exposes the Limited Flood Assessment concept as an app-owned trusted fact', () => {
+    const limitedRisk = {
+      ...DEMO_RISK_FIXTURES['demo-incomplete'],
+      rainfallSeverity: 48,
+    }
+    const limitedPlan = calculateEvacuationPlan(community, limitedRisk, 'SAMPLE')
+    const payload = buildEvacuationChatPayload('What is the assessment?', [], limitedRisk, community, limitedPlan)
+
+    expect(payload.trustedFacts).toContainEqual({
+      id: 'risk.assessment-mode',
+      text: 'LIMITED FLOOD ASSESSMENT. Rainfall evidence exists, but the full Flood Hazard is unavailable because required modeled river evidence or historical river context is unavailable.',
     })
   })
 

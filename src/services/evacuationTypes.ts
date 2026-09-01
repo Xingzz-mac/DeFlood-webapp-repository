@@ -1,6 +1,7 @@
 import type { CalculationStatus, FloodHazardLevel, TrendLabel } from './riskTypes'
 
 export type PlanningStatus = 'NOT_READY' | 'PREPAREDNESS' | 'READINESS' | 'URGENT_PLANNING'
+export type DataProvenance = 'SAMPLE' | 'USER_CONFIRMED'
 export type AllowedActionCategory = 'monitoring' | 'evidence' | 'readiness' | 'priority' | 'resources' | 'support'
 export type AllowedActionId =
   | 'monitor-risk'
@@ -48,6 +49,7 @@ export interface TransportPlanning {
 }
 
 export interface EvacuationPlanResult {
+  dataProvenance: DataProvenance
   planningStatus: PlanningStatus
   riskStatus: CalculationStatus
   hazardLevel: FloodHazardLevel | null
@@ -93,6 +95,7 @@ export interface EvacuationRiskInput {
 }
 
 export interface EvacuationAiPayload {
+  dataProvenance: DataProvenance
   riskLevel: FloodHazardLevel | null
   riskStatus: CalculationStatus
   hazardScore: number | null

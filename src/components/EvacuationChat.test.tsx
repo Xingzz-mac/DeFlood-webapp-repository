@@ -351,6 +351,36 @@ describe('Ask DeFlood.AI interface', () => {
     await act(async () => renderer?.unmount())
   })
 
+  it('renders sample chat facts and actions without verified or confirmed sample wording', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk, 'SAMPLE')
+    const trustedFact = buildEvacuationChatTrustedFacts(risk, currentCommunity, plan)
+      .find(fact => fact.id === 'shelter.capacity-shortfall')!
+    const trustedAction = plan.allowedActions.find(action => action.id === 'seek-additional-shelter-support')!
+    const requester = vi.fn().mockResolvedValue({
+      responseType: 'ACTIONS',
+      facts: [trustedFact],
+      actions: [trustedAction],
+      missingInformation: [],
+      rejectedFactIds: [],
+      rejectedActionIds: [],
+    })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => { renderer = renderChat(risk, currentCommunity, plan, requester) })
+    await send(renderer!, 'What are the shelter gaps?')
+    const text = pageText(renderer!.toJSON())
+
+    expect(text).toContain('these app-validated actions use sample community and resource inputs')
+    expect(text).toContain('Sample-qualified information')
+    expect(text).toContain('App-validated actions based on sample inputs')
+    expect(text).toContain('sample shortfall of 800 places')
+    expect(text).not.toMatch(/confirmed shortfall|Verified actions|AI-selected verified response/i)
+    const payload = requester.mock.calls[0]?.[0] as EvacuationChatPayload
+    expect(payload.dataProvenance).toBe('SAMPLE')
+    await act(async () => renderer?.unmount())
+  })
+
   it('renders a facts-only response with an app-owned lead', async () => {
     const risk = DEMO_RISK_FIXTURES['demo-high']
     const currentCommunity = community()

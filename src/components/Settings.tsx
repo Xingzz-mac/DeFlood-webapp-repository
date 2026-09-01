@@ -65,7 +65,7 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
             Flood Hazard and Data Confidence are calculated using the current DeFlood prototype risk engine. Thresholds are experimental and not operationally validated.
           </p>
           <div className="space-y-1 text-xs text-gray-400">
-            <div>Weather forecasts: Open-Meteo ECMWF AIFS and IFS</div>
+            <div>Weather forecasts: Open-Meteo ECMWF AIFS, ECMWF IFS, NOAA GFS, and UKMO</div>
             <div>Modeled river discharge: Open-Meteo Flood API (GloFAS)</div>
             <div>Terrain elevation: Open-Meteo Elevation API</div>
           </div>

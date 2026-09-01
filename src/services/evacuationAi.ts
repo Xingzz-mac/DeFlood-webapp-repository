@@ -36,6 +36,7 @@ export function buildEvacuationAiPayload(
   risk: EvacuationRiskInput,
 ): EvacuationAiPayload {
   return {
+    dataProvenance: plan.dataProvenance,
     riskLevel: plan.hazardLevel,
     riskStatus: plan.riskStatus,
     hazardScore: plan.hazardScore,
@@ -100,7 +101,9 @@ function parseValidatedResponse(body: unknown, plan: EvacuationPlanResult): Evac
   }
   return {
     actions: selected,
-    summary: `AI assistance organized ${selected.length} verified planning action${selected.length === 1 ? '' : 's'}. Deterministic risk and community facts remain authoritative.`,
+    summary: plan.dataProvenance === 'SAMPLE'
+      ? `AI assistance organized ${selected.length} app-validated planning action${selected.length === 1 ? '' : 's'} based on sample community data. Deterministic calculations remain authoritative.`
+      : `AI assistance organized ${selected.length} verified planning action${selected.length === 1 ? '' : 's'}. Deterministic risk and community facts remain authoritative.`,
     rejectedActionIds,
   }
 }

@@ -161,6 +161,30 @@ describe('deterministic evacuation planning', () => {
     expect(actionText(plan, 'prepare-support-request')).toContain('confirmed shelter shortfall of 800 places')
   })
 
+  it('qualifies sample warnings and allowed actions without changing deterministic calculations', () => {
+    const suppliedCommunity = community({
+      population: 2000,
+      shelterCapacity: 1200,
+      food: 'Limited',
+    })
+    const suppliedRisk = risk({ hazardLevel: 'HIGH', hazardScore: 82 })
+    const sample = calculateEvacuationPlan(suppliedCommunity, suppliedRisk, 'SAMPLE')
+    const confirmed = calculateEvacuationPlan(suppliedCommunity, suppliedRisk, 'USER_CONFIRMED')
+
+    expect(sample.dataProvenance).toBe('SAMPLE')
+    expect(sample.shelter).toEqual(confirmed.shelter)
+    expect(sample.transport).toEqual(confirmed.transport)
+    expect(sample.priorityGroups).toEqual(confirmed.priorityGroups)
+    expect(sample.allowedActions.map(action => action.id)).toEqual(confirmed.allowedActions.map(action => action.id))
+    expect(sample.immediatePriorities.map(action => action.id)).toEqual(confirmed.immediatePriorities.map(action => action.id))
+    expect(sample.resourceWarnings).toContain('Sample shelter capacity is short by 800 places.')
+    expect(sample.resourceWarnings).toContain('Sample food supply is limited.')
+    expect(sample.resourceWarnings.join(' ')).not.toMatch(/confirmed|verified/i)
+    expect(sample.allowedActions.map(action => action.text).join(' ')).toContain('sample shortfall of 800 places')
+    expect(sample.allowedActions.map(action => action.text).join(' ')).not.toMatch(/confirmed (?:shortfall|gap)/i)
+    expect(actionText(confirmed, 'seek-additional-shelter-support')).toContain('confirmed shortfall of 800 places')
+  })
+
   it('never inserts false shelter-shortage wording when there is no shortage', () => {
     const plan = calculateEvacuationPlan(
       community({ population: 1000, shelterCapacity: 1200 }),

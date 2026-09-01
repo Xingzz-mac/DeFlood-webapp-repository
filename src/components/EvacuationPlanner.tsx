@@ -107,11 +107,11 @@ export default function EvacuationPlanner({
         <section className="rounded-2xl border border-gray-200 bg-white p-5">
           <SectionTitle icon={<IconUsers size={18} />} title="Community snapshot" />
           <div className="mt-4 space-y-2 text-sm">
-            <Row label="Population" value={displayNumber(plan.shelter.population)} />
-            <Row label="People with disabilities" value={community.disabled.toLocaleString()} />
-            <Row label="Elderly residents" value={community.elderly.toLocaleString()} />
-            <Row label="Children" value={community.children.toLocaleString()} />
-            <Row label="Other vulnerable residents" value={community.otherVulnerable.toLocaleString()} />
+            <Row label={isSampleData ? 'Sample population' : 'Population'} value={displayNumber(plan.shelter.population)} />
+            <Row label={isSampleData ? 'Sample people with disabilities' : 'People with disabilities'} value={community.disabled.toLocaleString()} />
+            <Row label={isSampleData ? 'Sample elderly residents' : 'Elderly residents'} value={community.elderly.toLocaleString()} />
+            <Row label={isSampleData ? 'Sample children' : 'Children'} value={community.children.toLocaleString()} />
+            <Row label={isSampleData ? 'Sample other vulnerable residents' : 'Other vulnerable residents'} value={community.otherVulnerable.toLocaleString()} />
           </div>
           <p className="mt-3 text-xs text-gray-500">Groups are shown separately and are not summed because people may belong to more than one group.</p>
         </section>
@@ -119,8 +119,8 @@ export default function EvacuationPlanner({
         <section className="rounded-2xl border border-gray-200 bg-white p-5">
           <SectionTitle icon={<IconCheckCircle size={18} />} title="Shelter readiness" />
           <div className="mt-4 space-y-2 text-sm">
-            <Row label="Reported shelters" value={displayNumber(plan.shelter.shelterCount)} />
-            <Row label="Reported capacity" value={displayNumber(plan.shelter.reportedCapacity)} />
+            <Row label={isSampleData ? 'Sample shelters' : 'Reported shelters'} value={displayNumber(plan.shelter.shelterCount)} />
+            <Row label={isSampleData ? 'Sample capacity' : 'Reported capacity'} value={displayNumber(plan.shelter.reportedCapacity)} />
             <Row label="Coverage" value={displayPercent(plan.shelter.coveragePercent)} />
             <Row label={isSampleData ? 'Sample-data shortage' : 'Confirmed shortage'} value={plan.shelter.shortageConfirmed ? `${displayNumber(plan.shelter.shortage)} places` : plan.shelter.shortage === null ? 'Unknown' : 'None'} />
             <Row label="Operational status" value="Unknown — verify locally" />
@@ -137,7 +137,7 @@ export default function EvacuationPlanner({
                 <Metric label="Shortfall" value={`${displayNumber(plan.shelter.shortage)} places`} />
               </div>
               <p className="mt-3 text-sm leading-relaxed text-amber-950">
-                Reported shelter capacity covers {displayNumber(plan.shelter.reportedCapacity)} of {displayNumber(plan.shelter.population)} residents ({displayPercent(plan.shelter.coveragePercent)}), leaving {isSampleData ? 'a sample-data' : 'a confirmed'} shortfall of {displayNumber(plan.shelter.shortage)} places.
+                {isSampleData ? 'Sample' : 'Reported'} shelter capacity covers {displayNumber(plan.shelter.reportedCapacity)} of {displayNumber(plan.shelter.population)} residents ({displayPercent(plan.shelter.coveragePercent)}), leaving {isSampleData ? 'a sample-data' : 'a confirmed'} shortfall of {displayNumber(plan.shelter.shortage)} places.
               </p>
             </div>
           )}
@@ -147,10 +147,10 @@ export default function EvacuationPlanner({
       <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
         <SectionTitle icon={<IconTruck size={18} />} title="Transport and resources" />
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <Metric label="Cars / pickups" value={displayNumber(plan.transport.cars)} />
-          <Metric label="Large vehicles" value={displayNumber(plan.transport.trucks)} />
-          <Metric label="Boats" value={displayNumber(plan.transport.boats)} />
-          <Metric label="Volunteers" value={displayNumber(plan.volunteers)} />
+          <Metric label={isSampleData ? 'Sample cars / pickups' : 'Cars / pickups'} value={displayNumber(plan.transport.cars)} />
+          <Metric label={isSampleData ? 'Sample large vehicles' : 'Large vehicles'} value={displayNumber(plan.transport.trucks)} />
+          <Metric label={isSampleData ? 'Sample boats' : 'Boats'} value={displayNumber(plan.transport.boats)} />
+          <Metric label={isSampleData ? 'Sample volunteers' : 'Volunteers'} value={displayNumber(plan.volunteers)} />
         </div>
         <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
           Transport capacity is unknown. Inventory counts cannot determine people transportable, required trips, evacuation duration, or asset availability.
@@ -158,7 +158,7 @@ export default function EvacuationPlanner({
       </section>
 
       <div className="mb-5 grid gap-5 md:grid-cols-3">
-        <ListSection title="Priority groups" empty="No positive priority-group counts are recorded.">
+        <ListSection title={isSampleData ? 'Sample priority groups' : 'Priority groups'} empty="No positive priority-group counts are recorded.">
           {plan.priorityGroups.map(group => (
             <li key={group.id}><strong>{group.label}:</strong> {group.count.toLocaleString()}</li>
           ))}
@@ -193,7 +193,7 @@ export default function EvacuationPlanner({
 
       <details className="mb-5 rounded-2xl border border-gray-200 bg-white">
         <summary className="cursor-pointer list-none rounded-2xl px-5 py-4 text-sm font-semibold text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-          All verified planning actions ({plan.allowedActions.length})
+          All {isSampleData ? 'app-validated sample-data' : 'verified'} planning actions ({plan.allowedActions.length})
         </summary>
         <div className="space-y-2 border-t border-gray-100 p-5">
           <p className="pb-1 text-xs text-gray-600">Complete app-controlled action set selected by deterministic eligibility rules.</p>
@@ -208,7 +208,7 @@ export default function EvacuationPlanner({
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5">
         <h2 className="font-semibold text-gray-900">Optional AI-assisted plan</h2>
-        <p className="mt-1 text-sm text-gray-600">AI may prioritize the verified contextual actions above. It cannot add actions or override deterministic facts.</p>
+        <p className="mt-1 text-sm text-gray-600">AI may prioritize the {isSampleData ? 'app-validated actions based on sample inputs' : 'verified contextual actions'} above. It cannot add actions or override deterministic facts.</p>
         <button
           type="button"
           onClick={generateAiPlan}
@@ -221,7 +221,7 @@ export default function EvacuationPlanner({
 
         {aiState === 'success' && aiResult && (
           <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
-            <h3 className="font-semibold text-green-950">AI-prioritized verified actions</h3>
+            <h3 className="font-semibold text-green-950">AI-prioritized {isSampleData ? 'app-validated sample-data' : 'verified'} actions</h3>
             <p className="mt-1 text-sm text-green-900">{aiResult.summary}</p>
             <ul className="mt-3 space-y-2 text-sm text-gray-800">
               {aiResult.actions.map(action => <li key={action.id}>• {action.text}</li>)}
@@ -233,7 +233,7 @@ export default function EvacuationPlanner({
         )}
         {aiState === 'error' && (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            AI assistance is unavailable. The verified planning actions above are still available.
+            AI assistance is unavailable. The {isSampleData ? 'app-validated sample-data' : 'verified'} planning actions above are still available.
             {aiError && <span className="block pt-1 text-xs text-amber-700">{aiError}</span>}
           </div>
         )}

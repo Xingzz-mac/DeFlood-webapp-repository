@@ -71,6 +71,16 @@ const UNAVAILABLE_MESSAGE = 'DeFlood.AI is temporarily unavailable. The verified
 const NO_VERIFIED_ANSWER_MESSAGE = 'That information is not available in the current verified DeFlood data.'
 const STALE_RESPONSE_MESSAGE = 'Planning data changed while DeFlood.AI was responding. Please ask again using the latest data.'
 
+function responseLead(responseType: keyof typeof EVACUATION_CHAT_RESPONSE_LEADS, sample: boolean): string {
+  if (!sample) return EVACUATION_CHAT_RESPONSE_LEADS[responseType]
+  if (responseType === 'STATUS') return 'Here is the current DeFlood information. Community and resource values are based on demonstration data.'
+  if (responseType === 'ACTIONS') return 'Based on the current DeFlood information, these app-validated actions use sample community and resource inputs.'
+  if (responseType === 'FACTS') return 'Here is the relevant DeFlood information. Community and resource values are based on demonstration data.'
+  if (responseType === 'MISSING_INFORMATION') return 'DeFlood does not currently have enough information to answer that fully. Community and resource values are based on demonstration data.'
+  if (responseType === 'OUT_OF_SCOPE') return 'I can help with the current DeFlood flood assessment, evacuation planning, community resources, and app-validated planning actions based on sample inputs.'
+  return EVACUATION_CHAT_RESPONSE_LEADS[responseType]
+}
+
 function factDisplayPriority(fact: EvacuationChatTrustedFact, hasCurrentHazard: boolean): number {
   if (fact.id === 'risk.current-hazard') return 0
   if (fact.id === 'risk.data-confidence') return 1
@@ -133,6 +143,7 @@ export default function EvacuationChat({
   focusRequested = false,
   onFocusFulfilled,
 }: EvacuationChatProps) {
+  const sample = plan.dataProvenance === 'SAMPLE'
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
@@ -207,7 +218,7 @@ export default function EvacuationChat({
             content: [
               message.content,
               ...message.facts.map(fact => fact.text),
-              ...message.actions.map(action => `Verified action: ${action.text}`),
+              ...message.actions.map(action => `${sample ? 'App-validated sample-data action' : 'Verified action'}: ${action.text}`),
               ...message.missingInformation.map(item => `Still unknown: ${item}`),
             ].join('\n'),
           }]
@@ -252,8 +263,10 @@ export default function EvacuationChat({
         latestContextRef.current.trustedFacts,
       )
       const content = validated.responseType
-        ? EVACUATION_CHAT_RESPONSE_LEADS[validated.responseType]
-        : NO_VERIFIED_ANSWER_MESSAGE
+        ? responseLead(validated.responseType, latestContextRef.current.plan.dataProvenance === 'SAMPLE')
+        : latestContextRef.current.plan.dataProvenance === 'SAMPLE'
+          ? 'That information is not available in the current DeFlood data. Community and resource values are demonstration data.'
+          : NO_VERIFIED_ANSWER_MESSAGE
       const hasSelectedVerifiedContent = validated.facts.length > 0
         || validated.actions.length > 0
         || validated.missingInformation.length > 0
@@ -267,7 +280,13 @@ export default function EvacuationChat({
         detailsExpanded: fullDetailsRequested,
       })])
     } catch {
-      setMessages(current => [...current, addMessage('assistant', UNAVAILABLE_MESSAGE, { error: true })])
+      setMessages(current => [...current, addMessage(
+        'assistant',
+        sample
+          ? 'DeFlood.AI is temporarily unavailable. The sample-qualified planning information above is still available.'
+          : UNAVAILABLE_MESSAGE,
+        { error: true },
+      )])
       setDraft(question)
     } finally {
       loadingRef.current = false
@@ -311,7 +330,9 @@ export default function EvacuationChat({
           <div>
             <h2 className="font-semibold text-gray-900">Ask DeFlood.AI</h2>
             <p className="mt-1 max-w-2xl text-sm text-gray-600">
-              Ask questions about the current flood risk, community resources, missing information, or verified planning actions.
+              {sample
+                ? 'Ask questions about the current flood risk, community resources, missing information, or app-validated sample-data planning actions.'
+                : 'Ask questions about the current flood risk, community resources, missing information, or verified planning actions.'}
             </p>
           </div>
         </div>
@@ -327,7 +348,9 @@ export default function EvacuationChat({
         )}
       </div>
       <p className="mt-3 text-xs text-gray-500">
-        Grounded assistant — simple conversation may be handled locally; flood-related answers use verified DeFlood data and approved planning actions.
+        {sample
+          ? 'Grounded assistant — simple conversation may be handled locally; flood-related answers use sample-qualified DeFlood data and app-approved planning actions.'
+          : 'Grounded assistant — simple conversation may be handled locally; flood-related answers use verified DeFlood data and approved planning actions.'}
       </p>
       <p className="mt-1 text-xs text-gray-500">
         It cannot change risk calculations or issue evacuation orders.
@@ -395,12 +418,16 @@ export default function EvacuationChat({
                     data-testid="deflood-response-source"
                     className="mt-2 text-[10px] font-medium text-gray-500"
                   >
-                    {RESPONSE_SOURCE_LABELS?.[message.responseSource]}
+                    {sample && message.responseSource === 'VERIFIED_DATA'
+                      ? 'Sample-qualified data response'
+                      : sample && message.responseSource === 'AI_SELECTED_VERIFIED'
+                        ? 'AI-selected app-validated response'
+                        : RESPONSE_SOURCE_LABELS?.[message.responseSource]}
                   </div>
                 )}
                 {message.facts.length > 0 && (
                   <div className="mt-4 border-t border-slate-200 pt-3">
-                    <div className="text-sm font-semibold text-slate-700">Verified information</div>
+                    <div className="text-sm font-semibold text-slate-700">{sample ? 'Sample-qualified information' : 'Verified information'}</div>
                     <ul className="mt-2 list-disc space-y-2 pl-5 text-[15px] leading-6">
                       {visibleFacts.map(fact => <li key={fact.id}>{fact.text}</li>)}
                     </ul>
@@ -411,14 +438,14 @@ export default function EvacuationChat({
                         aria-expanded={message.detailsExpanded}
                         className="mt-3 rounded-md text-sm font-semibold text-indigo-700 underline-offset-4 hover:underline"
                       >
-                        {message.detailsExpanded ? 'Show less' : 'Show all verified details'}
+                        {message.detailsExpanded ? 'Show less' : `Show all ${sample ? 'sample-qualified' : 'verified'} details`}
                       </button>
                     )}
                   </div>
                 )}
                 {message.actions.length > 0 && (
                   <div className="mt-4 border-t border-slate-200 pt-3">
-                    <div className="text-sm font-semibold text-slate-700">Verified actions</div>
+                    <div className="text-sm font-semibold text-slate-700">{sample ? 'App-validated actions based on sample inputs' : 'Verified actions'}</div>
                     <ul className="mt-2 list-disc space-y-2 pl-5 text-[15px] leading-6">
                       {message.actions.map(action => <li key={action.id}>{action.text}</li>)}
                     </ul>

@@ -2,9 +2,11 @@ import { EVACUATION_AI_TIMEOUT_MS } from './evacuationConfig'
 import type { CommunityData } from '../context/CommunityContext'
 import type {
   AllowedAction,
+  DataProvenance,
   EvacuationPlanResult,
 } from './evacuationTypes'
 import type { RiskResult } from './riskTypes'
+import { floodAssessmentPresentation } from './riskPresentation'
 
 export const EVACUATION_CHAT_HISTORY_LIMIT = 10
 export const EVACUATION_CHAT_CONCISE_FACT_LIMIT = 6
@@ -54,7 +56,7 @@ export interface EvacuationChatShelterGrounding {
   reportedShelterCount: number | null
   reportedShelterCapacity: number | null
   operationalStatus: 'UNKNOWN'
-  operationalStatusMeaning: 'Reported shelter inventory and capacity do not establish whether any shelter is operational.'
+  operationalStatusMeaning: string
 }
 
 export interface EvacuationChatTrustedFact {
@@ -83,6 +85,7 @@ export interface EvacuationChatCommunity {
 export interface EvacuationChatPayload {
   message: string
   conversationHistory: EvacuationChatHistoryMessage[]
+  dataProvenance: DataProvenance
   risk: EvacuationChatSafeRisk
   community: EvacuationChatCommunity
   evacuationPlan: EvacuationPlanResult
@@ -228,12 +231,28 @@ export function buildEvacuationChatTrustedFacts(
 ): EvacuationChatTrustedFact[] {
   const facts: EvacuationChatTrustedFact[] = []
   const add = (id: string, text: string) => facts.push({ id, text })
+  const sample = plan.dataProvenance === 'SAMPLE'
+  const communityQualifier = sample ? 'Sample' : 'Recorded'
+  const shelterQualifier = sample ? 'Sample' : 'Reported'
+
+  add(
+    'planning.data-provenance',
+    sample
+      ? 'Community and resource values are seeded sample demonstration data and are not user-confirmed.'
+      : 'Community and resource values were explicitly saved by the user and are treated as user-confirmed prototype inputs.',
+  )
 
   add('risk.status', `Flood Hazard calculation status is ${risk.calculationStatus}.`)
   if (risk.hazardLevel !== null && risk.hazardScore !== null) {
     add(
       'risk.current-hazard',
       `Current Flood Hazard is ${risk.hazardLevel} with a hazard score of ${formatScore(risk.hazardScore)}.`,
+    )
+  }
+  if (floodAssessmentPresentation(risk).mode === 'LIMITED') {
+    add(
+      'risk.assessment-mode',
+      'LIMITED FLOOD ASSESSMENT. Rainfall evidence exists, but the full Flood Hazard is unavailable because required modeled river evidence or historical river context is unavailable.',
     )
   }
   if (risk.calculationStatus === 'NOT_CALCULATED') {
@@ -253,36 +272,36 @@ export function buildEvacuationChatTrustedFacts(
     .map(value => value.trim())
     .filter(value => value !== '')
     .join(', ')
-  if (location) add('community.identity', `Current recorded community is ${location}.`)
-  add('community.population', `Recorded community population is ${formatNumber(community.population)}.`)
+  if (location) add('community.identity', `${communityQualifier} community is ${location}${sample ? ' (demonstration data)' : ''}.`)
+  add('community.population', `${communityQualifier} community population is ${formatNumber(community.population)}${sample ? ' (demonstration data)' : ''}.`)
   if (plan.priorityGroups.length > 0) {
     const groups = plan.priorityGroups
       .map(group => `${group.label}: ${formatNumber(group.count)}`)
       .join('; ')
     add(
       'community.priority-groups',
-      `Recorded priority groups are ${groups}. These categories may overlap and must not be summed into a unique total.`,
+      `${communityQualifier} priority groups are ${groups}${sample ? ' (demonstration data)' : ''}. These categories may overlap and must not be summed into a unique total.`,
     )
   }
   if (plan.volunteers !== null) {
-    add('community.volunteers', `Recorded volunteer count is ${formatNumber(plan.volunteers)}; current availability is not established by this count.`)
+    add('community.volunteers', `${communityQualifier} volunteer count is ${formatNumber(plan.volunteers)}${sample ? ' in the demonstration data' : ''}; current availability is not established by this count.`)
   }
 
   if (plan.shelter.shelterCount !== null) {
-    add('shelter.reported-count', `Reported shelter count is ${formatNumber(plan.shelter.shelterCount)}.`)
+    add('shelter.reported-count', `${shelterQualifier} shelter count is ${formatNumber(plan.shelter.shelterCount)}${sample ? ' in the demonstration data' : ''}.`)
   }
   if (plan.shelter.reportedCapacity !== null) {
-    add('shelter.reported-capacity', `Reported shelter capacity is ${formatNumber(plan.shelter.reportedCapacity)} places.`)
+    add('shelter.reported-capacity', `${shelterQualifier} shelter capacity is ${formatNumber(plan.shelter.reportedCapacity)} places${sample ? ' in the demonstration data' : ''}.`)
   }
   if (plan.shelter.coveragePercent !== null) {
-    add('shelter.reported-coverage', `Reported shelter capacity coverage is ${plan.shelter.coveragePercent.toFixed(1)}% of the recorded population.`)
+    add('shelter.reported-coverage', `${shelterQualifier} shelter capacity coverage is ${plan.shelter.coveragePercent.toFixed(1)}% of the ${sample ? 'sample' : 'recorded'} population.`)
   }
   if (plan.shelter.shortageConfirmed && plan.shelter.shortage !== null) {
-    add('shelter.confirmed-shortfall', `The reported shelter capacity has a confirmed shortfall of ${formatNumber(plan.shelter.shortage)} places.`)
+    add('shelter.capacity-shortfall', `The ${sample ? 'sample' : 'reported'} shelter capacity has a ${sample ? 'sample' : 'confirmed'} shortfall of ${formatNumber(plan.shelter.shortage)} places.`)
   }
   add(
     'shelter.operational-status',
-    'Shelter operational status is unknown. Reported shelter inventory and capacity do not establish whether any shelter is operational.',
+    `Shelter operational status is unknown. ${sample ? 'Sample' : 'Reported'} shelter inventory and capacity do not establish whether any shelter is operational.`,
   )
 
   const transportParts = [
@@ -291,7 +310,7 @@ export function buildEvacuationChatTrustedFacts(
     plan.transport.boats === null ? null : `${formatNumber(plan.transport.boats)} boats`,
   ].filter((part): part is string => part !== null)
   if (transportParts.length > 0) {
-    add('transport.reported-inventory', `Recorded transport inventory includes ${transportParts.join(', ')}.`)
+    add('transport.reported-inventory', `${communityQualifier} transport inventory includes ${transportParts.join(', ')}${sample ? ' in the demonstration data' : ''}.`)
   }
   add(
     'transport.capacity-status',
@@ -300,14 +319,14 @@ export function buildEvacuationChatTrustedFacts(
 
   add(
     'resources.reported-supplies',
-    `Recorded supply statuses are water: ${community.water}; food: ${community.food}; medicine: ${community.medicine}; emergency equipment: ${community.equipment}.`,
+    `${communityQualifier} supply statuses are water: ${community.water}; food: ${community.food}; medicine: ${community.medicine}; emergency equipment: ${community.equipment}${sample ? ' (demonstration data)' : ''}.`,
   )
   add('planning.status', `Current deterministic evacuation planning status is ${plan.planningStatus.replace(/_/g, ' ')}.`)
   if (plan.missingInformation.length > 0) {
     add('planning.missing-information', `Current missing planning information: ${plan.missingInformation.join('; ')}.`)
   }
   if (plan.resourceWarnings.length > 0) {
-    add('planning.resource-warnings', `Current verified resource warnings: ${plan.resourceWarnings.join(' ')}`)
+    add('planning.resource-warnings', `${sample ? 'Current sample resource warnings, based on demonstration data' : 'Current verified resource warnings'}: ${plan.resourceWarnings.join(' ')}`)
   }
   return facts
 }
@@ -323,6 +342,7 @@ export function buildEvacuationChatPayload(
   return {
     message: message.trim(),
     conversationHistory: capConversationHistory(conversationHistory),
+    dataProvenance: evacuationPlan.dataProvenance,
     risk: serializeRisk(risk),
     community: {
       population: community.population,
@@ -346,7 +366,9 @@ export function buildEvacuationChatPayload(
       reportedShelterCount: evacuationPlan.shelter.shelterCount,
       reportedShelterCapacity: evacuationPlan.shelter.reportedCapacity,
       operationalStatus: 'UNKNOWN',
-      operationalStatusMeaning: 'Reported shelter inventory and capacity do not establish whether any shelter is operational.',
+      operationalStatusMeaning: evacuationPlan.dataProvenance === 'SAMPLE'
+        ? 'Sample shelter inventory and capacity do not establish whether any shelter is operational.'
+        : 'Reported shelter inventory and capacity do not establish whether any shelter is operational.',
     },
     trustedFacts: buildEvacuationChatTrustedFacts(risk, community, evacuationPlan),
     allowedActions: evacuationPlan.allowedActions.map(({ id, text }) => ({ id, text })),
