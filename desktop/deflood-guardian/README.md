@@ -10,13 +10,13 @@ From the repository root:
 pnpm guardian:dev
 ```
 
-The development fallback opens `http://localhost:8443`. Set the public website URL without changing the desktop code:
+By default, Guardian opens the published DeFlood.AI website at `https://deflood-ai.pages.dev`. Override it only when intentionally testing another safe HTTP/HTTPS destination:
 
 ```sh
-DEFLOOD_APP_URL=https://your-published-deflood-site.example pnpm guardian:dev
+DEFLOOD_APP_URL=http://localhost:8443 pnpm guardian:dev
 ```
 
-Only a public `http` or `https` DeFlood website URL is accepted. Do not put Worker secrets, webhook URLs, n8n addresses, or tokens in this setting.
+Only an `http` or `https` DeFlood website URL is accepted. Do not put Worker secrets, webhook URLs, n8n addresses, or tokens in this setting.
 
 ## Verify and package locally
 

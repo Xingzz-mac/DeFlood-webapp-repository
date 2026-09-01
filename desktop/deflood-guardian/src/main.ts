@@ -24,8 +24,8 @@ import {
 import {
   buildAskDeFloodUrl,
   buildOpenDeFloodUrl,
-  DEFAULT_DEFLOOD_APP_URL,
   isAllowedDeFloodExternalUrl,
+  resolveConfiguredDeFloodAppUrl,
 } from './shared/urls.js'
 import {
   executeGuardianProtocolCommand,
@@ -78,7 +78,7 @@ function displayWorkArea(display: Electron.Display): DisplayWorkArea {
 }
 
 function configuredBaseUrl(): string {
-  return process.env.DEFLOOD_APP_URL?.trim() || DEFAULT_DEFLOOD_APP_URL
+  return resolveConfiguredDeFloodAppUrl(process.env.DEFLOOD_APP_URL)
 }
 
 async function openDeFlood(action: GuardianOpenAction): Promise<boolean> {

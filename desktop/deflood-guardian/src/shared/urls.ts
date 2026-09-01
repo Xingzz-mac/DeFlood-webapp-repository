@@ -1,4 +1,4 @@
-export const DEFAULT_DEFLOOD_APP_URL = 'http://localhost:8443'
+export const DEFAULT_DEFLOOD_APP_URL = 'https://deflood-ai.pages.dev'
 
 function validatedBaseUrl(rawUrl: string): URL {
   const url = new URL(rawUrl)
@@ -10,6 +10,17 @@ function validatedBaseUrl(rawUrl: string): URL {
   }
   url.hash = ''
   return url
+}
+
+export function resolveConfiguredDeFloodAppUrl(rawOverride: string | undefined): string {
+  const candidate = rawOverride?.trim()
+  if (!candidate) return DEFAULT_DEFLOOD_APP_URL
+
+  try {
+    return validatedBaseUrl(candidate).toString()
+  } catch {
+    return DEFAULT_DEFLOOD_APP_URL
+  }
 }
 
 export function buildOpenDeFloodUrl(rawBaseUrl: string): string {
