@@ -1,0 +1,8 @@
+packages:
+  - "desktop/*"
+
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+allowBuilds:
+  electron-winstaller: true

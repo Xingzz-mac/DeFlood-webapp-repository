@@ -15,8 +15,18 @@ import { RiskProvider } from './context/RiskContext'
 import { EvacuationProvider } from './context/EvacuationContext'
 import { RiskScenarioProvider } from './context/RiskScenarioContext'
 import DevelopmentScenarioSelector from './components/DevelopmentScenarioSelector'
+import {
+  consumeCurrentAssistantLaunchIntent,
+  currentAppLaunchIntent,
+} from './services/appDeepLink'
+import {
+  clearPrototypeSession,
+  persistPrototypeSession,
+  restorePrototypeSession,
+  type PrototypeRole,
+} from './services/prototypeSession'
 
-export type Role = 'leader' | 'mayor' | 'assistant' | 'ngo' | 'government'
+export type Role = PrototypeRole
 export type Section = 'dashboard' | 'risk' | 'evacuation' | 'map' | 'support' | 'community' | 'settings'
 
 export interface AppUser {
@@ -25,19 +35,30 @@ export interface AppUser {
 }
 
 export default function App() {
-  const [user, setUser] = useState<AppUser | null>(null)
-  const [section, setSection] = useState<Section>('dashboard')
+  const [launchIntent, setLaunchIntent] = useState(currentAppLaunchIntent)
+  const [user, setUser] = useState<AppUser | null>(restorePrototypeSession)
+  const [section, setSection] = useState<Section>(launchIntent.focusAssistant ? 'evacuation' : 'dashboard')
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  const signIn = (nextUser: AppUser) => {
+    persistPrototypeSession(nextUser)
+    setUser(nextUser)
+    setSection(launchIntent.focusAssistant ? 'evacuation' : 'dashboard')
+  }
+
+  const signOut = () => {
+    clearPrototypeSession()
+    setUser(null)
+  }
+
+  const assistantFocusFulfilled = () => {
+    if (!launchIntent.focusAssistant) return
+    consumeCurrentAssistantLaunchIntent()
+    setLaunchIntent({ focusAssistant: false })
+  }
+
   if (!user) {
-    return (
-      <SignIn
-        onSignIn={u => {
-          setUser(u)
-          setSection('dashboard')
-        }}
-      />
-    )
+    return <SignIn onSignIn={signIn} />
   }
 
   return (
@@ -50,7 +71,9 @@ export default function App() {
             mobileOpen={mobileOpen}
             setMobileOpen={setMobileOpen}
             setSection={setSection}
-            onSignOut={() => setUser(null)}
+            focusAssistant={launchIntent.focusAssistant}
+            onAssistantFocusFulfilled={assistantFocusFulfilled}
+            onSignOut={signOut}
           />
         </EvacuationProvider>
       </RiskScenarioProvider>
@@ -64,6 +87,8 @@ function SignedInApplication({
   mobileOpen,
   setMobileOpen,
   setSection,
+  focusAssistant,
+  onAssistantFocusFulfilled,
   onSignOut,
 }: {
   user: AppUser
@@ -71,6 +96,8 @@ function SignedInApplication({
   mobileOpen: boolean
   setMobileOpen: (open: boolean) => void
   setSection: (section: Section) => void
+  focusAssistant: boolean
+  onAssistantFocusFulfilled: () => void
   onSignOut: () => void
 }) {
   const isNGO = user.role === 'ngo' || user.role === 'government'
@@ -87,7 +114,13 @@ function SignedInApplication({
     switch (section) {
       case 'dashboard': return <Dashboard user={user} onNavigate={navigate} />
       case 'risk': return <RiskAssessment onNavigate={navigate} />
-      case 'evacuation': return <EvacuationPlanner onNavigate={navigate} />
+      case 'evacuation': return (
+        <EvacuationPlanner
+          onNavigate={navigate}
+          focusAssistant={focusAssistant}
+          onAssistantFocusFulfilled={onAssistantFocusFulfilled}
+        />
+      )
       case 'map': return <FloodMap />
       case 'support': return <SupportNetwork />
       case 'community': return <CommunityInfo user={user} />

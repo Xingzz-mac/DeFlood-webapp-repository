@@ -1,0 +1,57 @@
+{
+  "name": "@deflood/guardian-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "author": "DeFlood.AI",
+  "description": "Lightweight desktop launcher for the DeFlood.AI web application",
+  "main": "dist/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "pnpm run build && electron .",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "build": "tsc --project tsconfig.json && node scripts/copy-assets.mjs",
+    "pack": "pnpm run build && electron-builder --dir --publish never",
+    "dist:mac": "pnpm run build && electron-builder --mac zip --publish never",
+    "dist:win": "pnpm run build && electron-builder --win nsis --publish never",
+    "dist:win:portable": "pnpm run build && electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.10"
+  },
+  "build": {
+    "appId": "ai.deflood.guardian",
+    "productName": "DeFlood Guardian",
+    "asar": true,
+    "icon": "dist/assets/deflood-app-icon.png",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "DeFlood Guardian",
+        "schemes": [
+          "defloodguardian"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

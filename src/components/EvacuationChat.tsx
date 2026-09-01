@@ -27,6 +27,7 @@ import {
 import type { AllowedAction, EvacuationPlanResult } from '../services/evacuationTypes'
 import type { RiskResult } from '../services/riskTypes'
 import defloodShield from '../assets/branding/deflood-shield.png'
+import { focusExistingAssistant } from '../services/appDeepLink'
 
 type ChatRequester = (
   payload: EvacuationChatPayload,
@@ -39,6 +40,8 @@ interface EvacuationChatProps {
   plan: EvacuationPlanResult
   requester?: ChatRequester
   showResponseSourceDiagnostics?: boolean
+  focusRequested?: boolean
+  onFocusFulfilled?: () => void
 }
 
 type ResponseSource = 'LOCAL' | 'VERIFIED_DATA' | 'AI_SELECTED_VERIFIED'
@@ -127,6 +130,8 @@ export default function EvacuationChat({
   plan,
   requester = requestEvacuationChat,
   showResponseSourceDiagnostics = import.meta.env.DEV,
+  focusRequested = false,
+  onFocusFulfilled,
 }: EvacuationChatProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [draft, setDraft] = useState('')
@@ -134,6 +139,10 @@ export default function EvacuationChat({
   const loadingRef = useRef(false)
   const nextMessageId = useRef(1)
   const messageEndRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLFormElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const focusHandledRef = useRef(false)
+  const messageScrollInitializedRef = useRef(false)
   const trustedFacts = buildEvacuationChatTrustedFacts(risk, community, plan)
   const contextFingerprint = planningContextFingerprint(risk, community, plan)
   const latestContextRef = useRef({ contextFingerprint, plan, trustedFacts })
@@ -162,6 +171,14 @@ export default function EvacuationChat({
   })
 
   useEffect(() => {
+    if (!focusRequested || focusHandledRef.current || !composerRef.current || !inputRef.current) return
+    focusHandledRef.current = true
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    focusExistingAssistant(composerRef.current, inputRef.current, reduceMotion)
+    onFocusFulfilled?.()
+  }, [focusRequested, onFocusFulfilled])
+
+  useEffect(() => {
     if (previousContextFingerprint.current === contextFingerprint) return
     previousContextFingerprint.current = contextFingerprint
     setMessages(current => current.length === 0
@@ -173,6 +190,10 @@ export default function EvacuationChat({
   }, [contextFingerprint])
 
   useEffect(() => {
+    if (!messageScrollInitializedRef.current) {
+      messageScrollInitializedRef.current = true
+      return
+    }
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [loading, messages])
 
@@ -281,7 +302,9 @@ export default function EvacuationChat({
   const demoActive = risk.engineVersion.startsWith('deflood-dev-scenario')
 
   return (
-    <section className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5">
+    <section
+      className="mt-5 scroll-mt-6 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <img src={defloodShield} alt="" className="h-9 w-9 shrink-0 object-contain" aria-hidden="true" />
@@ -418,10 +441,11 @@ export default function EvacuationChat({
         <div ref={messageEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-3 flex items-end gap-2">
+      <form ref={composerRef} onSubmit={handleSubmit} className="mt-3 scroll-mb-6 flex items-end gap-2">
         <div className="flex-1">
           <label htmlFor="deflood-chat-message" className="sr-only">Message DeFlood.AI</label>
           <textarea
+            ref={inputRef}
             id="deflood-chat-message"
             value={draft}
             onChange={event => setDraft(event.target.value)}

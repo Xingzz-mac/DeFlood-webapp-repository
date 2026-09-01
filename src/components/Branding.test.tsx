@@ -56,7 +56,10 @@ describe('official DeFlood.AI branding', () => {
 
     expect(signIn!.root.findByProps({ alt: 'DeFlood.AI — AI for Flood Resilience' }).props.src)
       .toBe(defloodLogoLight)
-    const sidebarShield = sidebar!.root.findByType('img')
+    const sidebarShield = sidebar!.root.findAllByType('img')
+      .find(image => image.props.src === defloodShield)
+    expect(sidebarShield).toBeDefined()
+    if (!sidebarShield) throw new Error('Expected the official shield in the sidebar.')
     expect(sidebarShield.props.src).toBe(defloodShield)
     expect(sidebarShield.props.alt).toBe('')
     expect(JSON.stringify(sidebar!.toJSON())).toContain('DeFlood.AI')

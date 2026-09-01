@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeFlood Guardian</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="../renderer.js" defer></script>
+  </head>
+  <body>
+    <main class="guardian-shell" aria-label="DeFlood Guardian desktop companion">
+      <aside class="help-bubble" aria-label="DeFlood Guardian shortcuts">
+        <strong>DeFlood Guardian</strong>
+        <p>Need help with flood risk or planning?</p>
+        <div class="bubble-actions">
+          <button type="button" class="primary-action" data-action="ask">Ask DeFlood</button>
+          <button type="button" class="secondary-action" data-action="open">Open DeFlood</button>
+        </div>
+      </aside>
+
+      <div
+        class="guardian-hit-area"
+        role="button"
+        tabindex="0"
+        aria-label="Ask DeFlood. Drag to move DeFlood Guardian."
+        data-guardian
+      >
+        <img
+          class="guardian-frame guardian-idle"
+          src="../assets/deflood-guardian-idle.png"
+          alt="DeFlood Guardian"
+          draggable="false"
+        />
+        <img
+          class="guardian-frame guardian-hover"
+          src="../assets/deflood-guardian-hover.png"
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+        />
+      </div>
+    </main>
+  </body>
+</html>

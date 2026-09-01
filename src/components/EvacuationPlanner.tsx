@@ -18,6 +18,8 @@ import {
 interface EvacuationPlannerProps {
   onNavigate: (section: Section) => void
   aiRequester?: typeof requestEvacuationAiPlan
+  focusAssistant?: boolean
+  onAssistantFocusFulfilled?: () => void
 }
 
 const STALE_AI_PLAN_MESSAGE = 'Planning data changed while DeFlood.AI was responding. Please ask again using the latest data.'
@@ -34,6 +36,8 @@ function displayPercent(value: number | null): string {
 export default function EvacuationPlanner({
   onNavigate,
   aiRequester = requestEvacuationAiPlan,
+  focusAssistant = false,
+  onAssistantFocusFulfilled,
 }: EvacuationPlannerProps) {
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
@@ -250,7 +254,13 @@ export default function EvacuationPlanner({
         )}
       </section>
 
-      <EvacuationChat risk={risk} community={community} plan={plan} />
+      <EvacuationChat
+        risk={risk}
+        community={community}
+        plan={plan}
+        focusRequested={focusAssistant}
+        onFocusFulfilled={onAssistantFocusFulfilled}
+      />
     </div>
   )
 }

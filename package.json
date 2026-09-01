@@ -9,7 +9,12 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "guardian:dev": "pnpm --dir desktop/deflood-guardian dev",
+    "guardian:test": "pnpm --dir desktop/deflood-guardian test",
+    "guardian:typecheck": "pnpm --dir desktop/deflood-guardian typecheck",
+    "guardian:build": "pnpm --dir desktop/deflood-guardian build",
+    "guardian:pack": "pnpm --dir desktop/deflood-guardian run pack"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

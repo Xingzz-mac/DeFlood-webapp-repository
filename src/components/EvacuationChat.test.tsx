@@ -1,5 +1,5 @@
 import { act, create, type ReactTestRendererJSON } from 'react-test-renderer'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CommunityData } from '../context/CommunityContext'
 import { calculateEvacuationPlan } from '../services/evacuationEngine'
 import {
@@ -82,6 +82,7 @@ function renderChat(
   plan: EvacuationPlanResult,
   requester: (payload: EvacuationChatPayload, currentPlan: EvacuationPlanResult) => Promise<EvacuationChatResult>,
   showResponseSourceDiagnostics = true,
+  focusRequested = false,
 ) {
   return create(
     <EvacuationChat
@@ -90,6 +91,7 @@ function renderChat(
       plan={plan}
       requester={requester}
       showResponseSourceDiagnostics={showResponseSourceDiagnostics}
+      focusRequested={focusRequested}
     />,
   )
 }
@@ -97,6 +99,76 @@ function renderChat(
 describe('Ask DeFlood.AI interface', () => {
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('does not send a message when the desktop deep link requests input focus', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn()
+    let renderer: ReturnType<typeof create> | null = null
+
+    await act(async () => {
+      renderer = renderChat(risk, currentCommunity, plan, requester, true, true)
+    })
+
+    expect(requester).not.toHaveBeenCalled()
+    expect(renderer!.root.findByType('textarea').props.value).toBe('')
+    await act(async () => renderer?.unmount())
+  })
+
+  it('reveals the composer once with minimum scrolling, focuses without scrolling, and reports fulfillment', async () => {
+    const risk = DEMO_RISK_FIXTURES['demo-low']
+    const currentCommunity = community()
+    const plan = calculateEvacuationPlan(currentCommunity, risk)
+    const requester = vi.fn()
+    const assistantSectionScroll = vi.fn()
+    const composerScroll = vi.fn()
+    const messageEndScroll = vi.fn()
+    const inputFocus = vi.fn()
+    const onFocusFulfilled = vi.fn()
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false }),
+    })
+    let renderer: ReturnType<typeof create> | null = null
+
+    await act(async () => {
+      renderer = create(
+        <EvacuationChat
+          risk={risk}
+          community={currentCommunity}
+          plan={plan}
+          requester={requester}
+          focusRequested
+          onFocusFulfilled={onFocusFulfilled}
+        />,
+        {
+          createNodeMock: element => {
+            if (element.type === 'section') return { scrollIntoView: assistantSectionScroll }
+            if (element.type === 'form') return { scrollIntoView: composerScroll }
+            if (element.type === 'textarea') return { focus: inputFocus }
+            if (element.type === 'div' && Object.keys(element.props as object).length === 0) {
+              return { scrollIntoView: messageEndScroll }
+            }
+            return null
+          },
+        },
+      )
+    })
+
+    expect(composerScroll).toHaveBeenCalledOnce()
+    expect(composerScroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'end' })
+    expect(renderer!.root.findByType('form').props.className).toContain('scroll-mb-6')
+    expect(assistantSectionScroll).not.toHaveBeenCalled()
+    expect(inputFocus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(messageEndScroll).not.toHaveBeenCalled()
+    expect(onFocusFulfilled).toHaveBeenCalledOnce()
+    expect(requester).not.toHaveBeenCalled()
+    await act(async () => renderer?.unmount())
   })
 
   it('answers a simple greeting locally without calling the workflow', async () => {

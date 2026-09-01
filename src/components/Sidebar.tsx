@@ -6,6 +6,7 @@ import {
   IconDashboard, IconShield, IconTruck, IconMap,
   IconUsers, IconBuilding, IconSettings, IconLogOut,
 } from './Icons'
+import GuardianLauncher from './GuardianLauncher'
 
 interface SidebarProps {
   user: AppUser
@@ -74,6 +75,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
 
       {/* User + Sign Out */}
       <div className="px-4 py-4 border-t border-white/10">
+        <GuardianLauncher />
         <div className="mb-3 px-1">
           <div className="text-sm font-semibold text-white leading-tight">{user.name}</div>
           <div className="text-xs text-blue-300 mt-0.5">{roleLabels[user.role] || user.role}</div>
