@@ -41,6 +41,7 @@ export default function EvacuationPlanner({
 }: EvacuationPlannerProps) {
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
+  const demoActive = risk.assessmentProvenance === 'DEMO'
   const plan = useEvacuationPlan()
   const [aiState, setAiState] = useState<'idle' | 'loading' | 'success' | 'error' | 'stale'>('idle')
   const [aiResult, setAiResult] = useState<EvacuationAiResult | null>(null)
@@ -76,9 +77,14 @@ export default function EvacuationPlanner({
           <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Evacuation Planner</h1>
           <p className="mt-0.5 text-sm text-gray-500">{community.name} · deterministic decision support</p>
         </div>
-        <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800">
-          {plan.planningStatus.replace(/_/g, ' ')}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {demoActive && (
+            <span className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-950">DEMO</span>
+          )}
+          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800">
+            {plan.planningStatus.replace(/_/g, ' ')}
+          </span>
+        </div>
       </div>
 
       <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">

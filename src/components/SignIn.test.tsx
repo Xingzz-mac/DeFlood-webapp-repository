@@ -26,6 +26,7 @@ describe('prototype sign-in wording', () => {
     expect(text).toContain('Prototype access — roles are simulated for demonstration.')
     expect(text).toContain('Demonstration PIN')
     expect(text).toContain('Demo only — this PIN is not a security credential.')
+    expect(text).toContain('Demo workspace starts with sample data. You can review and replace it after signing in.')
     expect(text).not.toContain('Authorised users only')
 
     const nameInput = renderer!.root.findByProps({ type: 'text' })

@@ -104,6 +104,7 @@ function riskValue(
 ) {
   return {
     ...DEMO_RISK_FIXTURES[scenario],
+    assessmentProvenance: 'DEMO' as const,
     environmentalData: { river: currentRiver } as EnvironmentalData,
     loading: false,
     error: null,
@@ -242,7 +243,7 @@ describe('real geographic Flood Map presentation', () => {
       renderer = create(<FloodMap />)
     })
     expect(pageText(renderer!.toJSON()).replace(/\s+/g, ' ')).toContain(
-      'Demo risk scenario — map coordinates and river markers continue to use shared live spatial/environmental evidence.',
+      'Demo risk scenario — assessment evidence and its river marker are synthetic.',
     )
     await act(async () => renderer?.unmount())
   })

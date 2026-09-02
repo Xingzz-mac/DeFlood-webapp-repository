@@ -540,7 +540,10 @@ describe('Ask DeFlood.AI interface', () => {
   })
 
   it('renders only current app-owned facts and actions while ignoring arbitrary model answer text', async () => {
-    const risk = DEMO_RISK_FIXTURES['demo-high']
+    const risk = {
+      ...DEMO_RISK_FIXTURES['demo-high'],
+      assessmentProvenance: 'DEMO' as const,
+    }
     const currentCommunity = community()
     const plan = calculateEvacuationPlan(currentCommunity, risk)
     const trusted = plan.allowedActions.find(action => action.id === 'verify-transport-capacity')!
@@ -562,8 +565,8 @@ describe('Ask DeFlood.AI interface', () => {
 
     const payload = requester.mock.calls[0]?.[0] as EvacuationChatPayload
     expect(payload.risk.hazardLevel).toBe('HIGH')
-    expect(payload.risk.hazardScore).toBe(82)
-    expect(payload.risk.confidenceScore).toBe(72)
+    expect(payload.risk.hazardScore).toBe(risk.hazardScore)
+    expect(payload.risk.confidenceScore).toBe(risk.confidenceScore)
     expect(payload.risk.supportingFacts).toEqual(risk.contributingFactors)
     expect(payload.risk).not.toHaveProperty('engineVersion')
     expect(payload.community.population).toBe(2000)

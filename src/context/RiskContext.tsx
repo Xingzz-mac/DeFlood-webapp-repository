@@ -17,6 +17,7 @@ import type { RiskResult } from '../services/riskTypes'
 import type { EnvironmentalData } from '../services/types'
 
 export interface RiskContextValue extends RiskResult {
+  assessmentProvenance?: 'LIVE' | 'DEMO'
   environmentalData: EnvironmentalData | null
   loading: boolean
   error: string | null
@@ -107,6 +108,7 @@ export function RiskProvider({ children }: { children: ReactNode }) {
     : null
   const value: RiskContextValue = {
     ...risk,
+    assessmentProvenance: 'LIVE',
     environmentalData: alignedEnvironmental,
     loading: environmental.loading || riverSelectionLoading,
     error: environmental.error ?? historicalError,

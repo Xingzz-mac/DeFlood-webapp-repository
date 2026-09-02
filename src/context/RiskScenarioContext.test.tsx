@@ -36,7 +36,7 @@ function memoryStorage(initial: Record<string, string> = {}) {
   }
 }
 
-describe('development risk scenarios', () => {
+describe('presentation risk scenarios', () => {
   const originalStorage = globalThis.localStorage
 
   beforeEach(() => {
@@ -51,25 +51,34 @@ describe('development risk scenarios', () => {
     })
   })
 
-  it('defaults to Live Data and returns the exact live RiskProvider value', async () => {
+  it('defaults to Live Assessment and restores the exact live RiskProvider value after a demo', async () => {
     const live = liveRisk()
     let selected: RiskContextValue | null = null
     let activeScenario: RiskScenario | null = null
+    let setScenario: ((scenario: RiskScenario) => void) | null = null
     function Consumer() {
       selected = useRisk()
-      activeScenario = useRiskScenario().activeScenario
+      const control = useRiskScenario()
+      activeScenario = control.activeScenario
+      setScenario = control.setScenario
       return null
     }
 
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
       renderer = create(
-        <RiskScenarioStateProvider liveRisk={live} developmentEnabled>
+        <RiskScenarioStateProvider liveRisk={live} demoEnabled>
           <Consumer />
         </RiskScenarioStateProvider>,
       )
     })
 
+    expect(activeScenario).toBe('live')
+    expect(selected).toBe(live)
+    await act(async () => setScenario?.('demo-low'))
+    expect(activeScenario).toBe('demo-low')
+    expect((selected as RiskContextValue | null)?.assessmentProvenance).toBe('DEMO')
+    await act(async () => setScenario?.('live'))
     expect(activeScenario).toBe('live')
     expect(selected).toBe(live)
     await act(async () => renderer?.unmount())
@@ -101,7 +110,7 @@ describe('development risk scenarios', () => {
     await act(async () => {
       renderer = create(
         <CommunityProvider>
-          <RiskScenarioStateProvider liveRisk={live} developmentEnabled>
+          <RiskScenarioStateProvider liveRisk={live} demoEnabled>
             <EvacuationProvider>
               <Consumer />
             </EvacuationProvider>
@@ -145,7 +154,7 @@ describe('development risk scenarios', () => {
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
       renderer = create(
-        <RiskScenarioStateProvider liveRisk={live} developmentEnabled={false}>
+        <RiskScenarioStateProvider liveRisk={live} demoEnabled={false}>
           <DevelopmentScenarioSelector />
           <Consumer />
         </RiskScenarioStateProvider>,
@@ -171,19 +180,19 @@ describe('development risk scenarios', () => {
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
       renderer = create(
-        <RiskScenarioStateProvider liveRisk={liveRisk()} developmentEnabled>
+        <RiskScenarioStateProvider liveRisk={liveRisk()} demoEnabled>
           <DevelopmentScenarioSelector />
           <Controller />
         </RiskScenarioStateProvider>,
       )
     })
-    expect(JSON.stringify((renderer as ReturnType<typeof create> | null)?.toJSON())).toContain('Live Data')
-    expect(JSON.stringify((renderer as ReturnType<typeof create> | null)?.toJSON())).not.toContain('DEMO SCENARIO — Not live flood data')
+    expect(JSON.stringify((renderer as ReturnType<typeof create> | null)?.toJSON())).toContain('Live Assessment')
+    expect(JSON.stringify((renderer as ReturnType<typeof create> | null)?.toJSON())).not.toContain('DEMO SCENARIO — Synthetic environmental evidence')
 
     await act(async () => {
       selectScenario?.('demo-incomplete')
     })
-    expect(JSON.stringify((renderer as ReturnType<typeof create> | null)?.toJSON())).toContain('DEMO SCENARIO — Not live flood data')
+    expect(JSON.stringify((renderer as ReturnType<typeof create> | null)?.toJSON())).toContain('DEMO SCENARIO — Synthetic environmental evidence')
     await act(async () => renderer?.unmount())
   })
 })

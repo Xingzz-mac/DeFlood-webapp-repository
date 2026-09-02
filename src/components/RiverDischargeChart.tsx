@@ -17,6 +17,7 @@ interface RiverDischargeChartProps {
   loading: boolean
   expired?: boolean
   demoUnavailable?: boolean
+  demoScenario?: boolean
 }
 
 const WIDTH = 760
@@ -110,6 +111,7 @@ export default function RiverDischargeChart({
   loading,
   expired = false,
   demoUnavailable = false,
+  demoScenario = false,
 }: RiverDischargeChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const clipId = `river-chart-${useId().replace(/:/g, '')}`
@@ -152,9 +154,11 @@ export default function RiverDischargeChart({
     ? 'Cached source'
     : river.metadata.status === 'incomplete'
       ? 'Incomplete source'
-      : loading
-        ? 'Refreshing'
-        : 'Current source'
+        : loading
+          ? 'Refreshing'
+          : demoScenario
+            ? 'Synthetic demo'
+            : 'Current source'
 
   return (
     <section className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 md:p-5" aria-labelledby="river-outlook-title">
@@ -163,7 +167,11 @@ export default function RiverDischargeChart({
           <h2 id="river-outlook-title" className="flex items-center gap-2 font-semibold text-gray-900">
             <IconWaves size={18} className="text-blue-700" /> Modeled river discharge outlook
           </h2>
-          <p className="mt-1 text-xs text-gray-500">Recent modeled conditions and the current seven-day GloFAS forecast.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {demoScenario
+              ? 'Synthetic river evidence supplied to the deterministic risk engine.'
+              : 'Recent modeled conditions and the current seven-day GloFAS forecast.'}
+          </p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${river.metadata.cached ? 'bg-blue-50 text-blue-700' : river.metadata.status === 'incomplete' ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
           {currentStatus}
@@ -178,9 +186,15 @@ export default function RiverDischargeChart({
       </div>
 
       <div className="mt-3 rounded-xl bg-blue-50 px-3 py-2.5 text-xs leading-relaxed text-blue-900">
-        <div className="font-semibold">{riverModelLocationText(river)}</div>
+        <div className="font-semibold">
+          {demoScenario
+            ? 'Synthetic demo river point at the scenario coordinate.'
+            : riverModelLocationText(river)}
+        </div>
         <div className="mt-1 text-blue-800">
-          GloFAS uses an approximately 5 km river grid. A nearby modeled river point may be used when the exact community coordinate has no usable discharge series.
+          {demoScenario
+            ? 'This point is demonstration context, not a live GloFAS query or observed station.'
+            : 'GloFAS uses an approximately 5 km river grid. A nearby modeled river point may be used when the exact community coordinate has no usable discharge series.'}
         </div>
       </div>
 
@@ -281,7 +295,9 @@ export default function RiverDischargeChart({
         </div>
       )}
       <p className="mt-3 text-xs leading-relaxed text-gray-500">
-        Source: GloFAS via Open-Meteo. Modeled river discharge at approximately 5 km resolution; not a local gauge measurement.
+        {demoScenario
+          ? 'Source: synthetic demonstration evidence. These values are not a live GloFAS forecast or local gauge measurement.'
+          : 'Source: GloFAS via Open-Meteo. Modeled river discharge at approximately 5 km resolution; not a local gauge measurement.'}
         {references ? ' Historical percentile references are display context, not official flood thresholds.' : ''}
       </p>
     </section>

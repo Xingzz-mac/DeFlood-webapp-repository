@@ -174,7 +174,7 @@ function SignedInApplication({
           <div className="w-8" />
         </div>
 
-        {import.meta.env.DEV && <DevelopmentScenarioSelector />}
+        <DevelopmentScenarioSelector />
 
         {/* Scrollable page content */}
         <main className="flex-1 overflow-y-auto">

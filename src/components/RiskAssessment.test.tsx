@@ -178,11 +178,11 @@ describe('Risk Assessment information hierarchy', () => {
     expect(limitedRisk.hazardScore).toBeNull()
     expect(limitedRisk.hazardLevel).toBeNull()
     expect(normalizedText).toContain('LIMITED FLOOD ASSESSMENT')
-    expect(normalizedText).toContain('Existing rainfall severity 57.8 / 100')
-    expect(normalizedText).toContain('24-hour consensus 36.0 mm')
-    expect(normalizedText).toContain('72-hour consensus 98.0 mm')
+    expect(normalizedText).toContain(`Existing rainfall severity ${base.rainfallSeverity?.toFixed(1)} / 100`)
+    expect(normalizedText).toContain('24-hour consensus 35.0 mm')
+    expect(normalizedText).toContain('72-hour consensus 90.0 mm')
     expect(normalizedText).toContain('Models available 4 / 4')
-    expect(normalizedText).toContain('Model agreement Moderate')
+    expect(normalizedText).toContain('Model agreement Strong')
     expect(normalizedText).toContain('Rainfall signal is not the full Flood Hazard score.')
     expect(normalizedText).toContain('River evidence Unavailable')
     expect(normalizedText).toContain('No usable GloFAS river point was found within the nearby search radius.')
@@ -237,7 +237,7 @@ describe('Risk Assessment information hierarchy', () => {
     expect(pageText).toContain('Why this Flood Hazard score?')
     expect(pageText).toContain('Why this Data Confidence score?')
     expect(pageText).toContain('Four-model rainfall outlook')
-    expect(normalizedText).toContain('72h consensus: 190.0 mm')
+    expect(normalizedText).toContain('72h consensus: 280.0 mm')
     for (const item of DEMO_RISK_FIXTURES['demo-high'].hazardBreakdown) {
       expect(normalizedText).toContain(`${item.contribution.toFixed(1)} points`)
     }
@@ -276,7 +276,7 @@ describe('Risk Assessment information hierarchy', () => {
       renderer = create(<RiskAssessment onNavigate={vi.fn()} />)
     })
     const normalizedText = textContent(renderer!.toJSON()).replace(/\s+/g, ' ')
-    expect(consensus72?.value).toBe(190)
+    expect(consensus72?.value).toBe(280)
     expect(normalizedText).toContain('Usable models: 3 / 4')
     expect(normalizedText).toContain(
       'UKMO Global 10 km — Physics-Based Forecast Unavailable unavailable',

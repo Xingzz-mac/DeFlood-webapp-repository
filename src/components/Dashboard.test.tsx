@@ -79,7 +79,7 @@ describe('Dashboard community-data provenance', () => {
     })
     const text = pageText(renderer!.toJSON())
 
-    expect(text).toContain('Demo community data — confirm or edit Community Information before use.')
+    expect(text).toContain('Sample demo workspace — Ayeyarwady Delta Zone 3 is starter data')
     expect(text).toContain('Sample Population')
     expect(text).toContain('Sample resource count')
     expect(text).not.toContain('Saved Population')
@@ -130,7 +130,7 @@ describe('Dashboard community-data provenance', () => {
     const text = pageText(renderer!.toJSON())
 
     expect(text).toContain('LIMITED FLOOD ASSESSMENT')
-    expect(text).toContain('Verified rainfall signal: 57.8 / 100')
+    expect(text).toContain(`Verified rainfall signal: ${base.rainfallSeverity?.toFixed(1)} / 100`)
     expect(text).not.toContain('INCOMPLETE')
     expect(text).not.toContain('LOW Flood Hazard')
     expect(limitedRisk.calculationStatus).toBe('INCOMPLETE')

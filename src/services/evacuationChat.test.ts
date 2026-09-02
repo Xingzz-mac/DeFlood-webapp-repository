@@ -111,8 +111,8 @@ describe('evacuation planning chat service', () => {
       risk: {
         status: 'COMPLETE',
         hazardLevel: 'HIGH',
-        hazardScore: 82,
-        confidenceScore: 72,
+        hazardScore: highRisk.hazardScore,
+        confidenceScore: highRisk.confidenceScore,
         supportingFacts: highRisk.contributingFactors,
         unavailableFacts: [],
       },
@@ -149,7 +149,7 @@ describe('evacuation planning chat service', () => {
     })
     expect(payload.trustedFacts).toContainEqual({
       id: 'risk.current-hazard',
-      text: 'Current Flood Hazard is HIGH with a hazard score of 82.0 / 100.',
+      text: `Current Flood Hazard is HIGH with a hazard score of ${highRisk.hazardScore?.toFixed(1)} / 100.`,
     })
     expect(payload.trustedFacts).toContainEqual({
       id: 'shelter.operational-status',
@@ -249,8 +249,8 @@ describe('evacuation planning chat service', () => {
     expect(posted.risk).toEqual({
       status: 'COMPLETE',
       hazardLevel: 'HIGH',
-      hazardScore: 82,
-      confidenceScore: 72,
+      hazardScore: highRisk.hazardScore,
+      confidenceScore: highRisk.confidenceScore,
       confidenceLabel: 'Data Confidence (evidence quality, not flood probability)',
       supportingFacts: highRisk.contributingFactors,
       unavailableFacts: [],

@@ -29,7 +29,8 @@ export default function FloodMap() {
   const model = buildFloodMapViewModel(community, risk, risk.environmentalData)
   const [layers, setLayers] = useState<FloodMapLayerVisibility>(initialLayers)
   const [deviceLocation, setDeviceLocation] = useState<MapDeviceLocation | null>(null)
-  const demoRiskActive = risk.engineVersion.startsWith('deflood-dev-scenario')
+  const demoRiskActive = risk.assessmentProvenance === 'DEMO'
+    || risk.engineVersion.startsWith('deflood-dev-scenario')
 
   const toggleLayer = (layer: keyof FloodMapLayerVisibility) => {
     setLayers(current => ({ ...current, [layer]: !current[layer] }))
@@ -60,7 +61,7 @@ export default function FloodMap() {
 
       {demoRiskActive && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Demo risk scenario</strong> — map coordinates and river markers continue to use shared live spatial/environmental evidence.
+          <strong>Demo risk scenario</strong> — assessment evidence and its river marker are synthetic. The saved community coordinate remains the location context.
         </div>
       )}
 

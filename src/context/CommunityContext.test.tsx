@@ -76,7 +76,7 @@ describe('CommunityContext sample-data provenance', () => {
 
     const seededValues = { ...(currentCommunity as unknown as CommunityData) }
     expect(isSampleData).toBe(true)
-    expect(pageText(renderer!.toJSON())).toContain('Demo community data — confirm or edit before use.')
+    expect(pageText(renderer!.toJSON())).toContain('Sample demo workspace — Ayeyarwady Delta Zone 3 is starter data only.')
     expect(localStorage.getItem('deflood-community-data-confirmed')).toBeNull()
 
     const form = renderer!.root.findByType('form')
@@ -86,7 +86,7 @@ describe('CommunityContext sample-data provenance', () => {
 
     expect(isSampleData).toBe(false)
     expect(currentCommunity).toEqual(seededValues)
-    expect(pageText(renderer!.toJSON())).not.toContain('Demo community data — confirm or edit before use.')
+    expect(pageText(renderer!.toJSON())).not.toContain('Sample demo workspace')
     expect(pageText(renderer!.toJSON())).toContain('Information saved successfully')
     expect(localStorage.getItem('deflood-community-data-confirmed')).toBe('true')
 

@@ -20,6 +20,7 @@ interface DashboardProps {
 export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
+  const demoActive = risk.assessmentProvenance === 'DEMO'
   const evacuation = useEvacuationPlan()
   const presentation = floodAssessmentPresentation(risk)
   const hazardLabel = presentation.label
@@ -48,7 +49,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
 
       {isSampleData && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Demo community data</strong> — confirm or edit Community Information before use. Planning results use these sample inputs.
+          <strong>Sample demo workspace</strong> — Ayeyarwady Delta Zone 3 is starter data until Community Information is reviewed and saved. Planning results use these sample inputs.
         </div>
       )}
 
@@ -59,7 +60,12 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
               <IconAlertTriangle size={20} />
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Flood Hazard</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                Flood Hazard
+                {demoActive && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">DEMO</span>
+                )}
+              </div>
               <div className={`mt-1 text-2xl font-bold ${hazardColor}`}>
                 {risk.loading && risk.calculationStatus === 'NOT_CALCULATED' ? 'Calculating…' : hazardLabel}
               </div>

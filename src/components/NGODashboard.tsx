@@ -1,8 +1,20 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import type { AppUser, Section } from "../App"
+import { useCommunity, type CommunityData } from "../context/CommunityContext"
+import { useEvacuationPlan } from "../context/EvacuationContext"
+import { useRisk } from "../context/RiskContext"
+import { useRiskScenarioOptional } from "../context/RiskScenarioContext"
 import { useSupportRequests } from "../hooks/useSupportRequests"
 import {
+  DEMO_OPERATIONS_COMMUNITIES,
+  DEMO_SCENARIOS,
+} from "../services/demoScenarios"
+import { calculateEvacuationPlan } from "../services/evacuationEngine"
+import type { EvacuationPlanResult } from "../services/evacuationTypes"
+import type { FloodHazardLevel } from "../services/riskTypes"
+import {
   nextSupportRequestStatus,
+  requestBelongsToCommunity,
   supportRequestStatusLabel,
   type SupportRequest,
   type SupportRequestStatus,
@@ -12,441 +24,484 @@ import { IconClock, IconFilter, IconUsers } from "./Icons"
 
 interface NGODashboardProps {
   user: AppUser
-  onNavigate: (s: Section) => void
+  onNavigate: (section: Section) => void
 }
 
-interface DashboardRow {
+type OperationsSource = "CURRENT" | "DEMO_SCENARIO" | "LOCAL_REQUEST"
+type OperationsProvenance = "LIVE / CURRENT" | "SAMPLE" | "USER_CONFIRMED" | "DEMO SCENARIO"
+
+interface OperationsRow {
   id: string
-  name: string
-  risk: "LOW" | "MEDIUM" | "HIGH" | null
-  population: number
-  vulnerable: number
-  assistance: string
-  requestTime: string
-  status: SupportRequestStatus
-  source: "LOCAL_DEMO" | "SAMPLE"
+  source: OperationsSource
+  provenance: OperationsProvenance
+  community: Pick<CommunityData, "name" | "township" | "region" | "latitude" | "longitude" | "population" | "children" | "elderly" | "disabled" | "otherVulnerable">
+  resources: {
+    shelters: number
+    shelterCapacity: number
+    water: string
+    food: string
+    medicine: string
+    equipment: string
+    cars: number
+    trucks: number
+    boats: number
+  }
+  risk: FloodHazardLevel | null
+  hazardScore: number | null
+  confidence: number | null
+  assessment: "Live" | "Limited" | "Demo" | "Unavailable" | "Recorded snapshot"
+  evidenceSummary: string[]
+  plan: EvacuationPlanResult | null
   request: SupportRequest | null
 }
 
-const sampleCommunities: DashboardRow[] = [
-  {
-    id: "c1",
-    name: "Sample — Ayeyarwady Delta Zone 3",
-    risk: "HIGH",
-    population: 2340,
-    vulnerable: 420,
-    assistance: "Sample rescue and supply request",
-    requestTime: "13:45",
-    status: "PENDING",
-    source: "SAMPLE",
-    request: null,
-  },
-  {
-    id: "c2",
-    name: "Sample — Bogale Township",
-    risk: "HIGH",
-    population: 4120,
-    vulnerable: 780,
-    assistance: "Sample shelter and water request",
-    requestTime: "12:10",
-    status: "IN_PROGRESS",
-    source: "SAMPLE",
-    request: null,
-  },
-  {
-    id: "c3",
-    name: "Sample — Dedaye Township",
-    risk: "MEDIUM",
-    population: 3100,
-    vulnerable: 520,
-    assistance: "Sample food request",
-    requestTime: "10:05",
-    status: "ACCEPTED",
-    source: "SAMPLE",
-    request: null,
-  },
-  {
-    id: "c4",
-    name: "Sample — Mawlamyinegyun",
-    risk: "MEDIUM",
-    population: 1870,
-    vulnerable: 290,
-    assistance: "Sample monitoring record",
-    requestTime: "09:30",
-    status: "ACCEPTED",
-    source: "SAMPLE",
-    request: null,
-  },
-  {
-    id: "c5",
-    name: "Sample — Pyapon District",
-    risk: "LOW",
-    population: 5400,
-    vulnerable: 870,
-    assistance: "Sample: none",
-    requestTime: "—",
-    status: "RESOLVED",
-    source: "SAMPLE",
-    request: null,
-  },
-  {
-    id: "c6",
-    name: "Sample — Wakema",
-    risk: "LOW",
-    population: 2800,
-    vulnerable: 410,
-    assistance: "Sample: none",
-    requestTime: "—",
-    status: "RESOLVED",
-    source: "SAMPLE",
-    request: null,
-  },
-]
+type FilterType = "all" | "high" | "open" | "inprogress"
 
-type FilterType = "all" | "high" | "pending" | "inprogress"
+const RISK_ORDER: Record<FloodHazardLevel, number> = {
+  HIGH: 0,
+  MEDIUM: 1,
+  LOW: 2,
+}
+
+function vulnerableCount(row: OperationsRow): number {
+  return (
+    row.community.children +
+    row.community.elderly +
+    row.community.disabled +
+    row.community.otherVulnerable
+  )
+}
+
+function requestOrder(request: SupportRequest | null): number {
+  if (request && request.status !== "RESOLVED") return 0
+  if (!request) return 1
+  return 2
+}
+
+export function sortOperationsRows(rows: OperationsRow[]): OperationsRow[] {
+  return [...rows].sort((first, second) => {
+    const riskDifference =
+      (first.risk ? RISK_ORDER[first.risk] : 3) -
+      (second.risk ? RISK_ORDER[second.risk] : 3)
+    if (riskDifference !== 0) return riskDifference
+    const requestDifference =
+      requestOrder(first.request) - requestOrder(second.request)
+    if (requestDifference !== 0) return requestDifference
+    return first.community.name.localeCompare(second.community.name)
+  })
+}
+
+function requestRow(request: SupportRequest): OperationsRow {
+  return {
+    id: `request-${request.id}`,
+    source: "LOCAL_REQUEST",
+    provenance: request.dataProvenance,
+    community: {
+      ...request.community,
+      latitude: request.community.latitude ?? 0,
+      longitude: request.community.longitude ?? 0,
+      children: request.vulnerableGroups.children,
+      elderly: request.vulnerableGroups.elderly,
+      disabled: request.vulnerableGroups.disabled,
+      otherVulnerable: request.vulnerableGroups.otherVulnerable,
+    },
+    resources: request.resourceConditions,
+    risk: request.riskLevel,
+    hazardScore: null,
+    confidence: null,
+    assessment: "Recorded snapshot",
+    evidenceSummary:
+      request.planningGaps.length > 0
+        ? request.planningGaps
+        : ["No planner-derived resource gap was stored with this request."],
+    plan: null,
+    request,
+  }
+}
 
 export default function NGODashboard({ user }: NGODashboardProps) {
+  const { community, isSampleData } = useCommunity()
+  const risk = useRisk()
+  const currentPlan = useEvacuationPlan()
+  const scenario = useRiskScenarioOptional()
   const { requests, transition } = useSupportRequests()
   const [filter, setFilter] = useState<FilterType>("all")
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => requests[0]?.id ?? sampleCommunities[0].id,
-  )
-  const [samples, setSamples] = useState<DashboardRow[]>(sampleCommunities)
-  const localRows = useMemo(
-    () => requests.map(requestToDashboardRow),
-    [requests],
-  )
-  const rows = useMemo(() => [...localRows, ...samples], [localRows, samples])
-  const selected = rows.find((row) => row.id === selectedId) ?? null
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!selected && rows.length > 0) setSelectedId(rows[0].id)
-  }, [rows, selected])
+  const rows = useMemo(() => {
+    const currentRequest =
+      requests.find((request) =>
+        requestBelongsToCommunity(request, community),
+      ) ?? null
+    const currentAssessment: OperationsRow = {
+      id: "current-community",
+      source: "CURRENT",
+      provenance: scenario.demoActive
+        ? "DEMO SCENARIO"
+        : isSampleData
+          ? "SAMPLE"
+          : "USER_CONFIRMED",
+      community,
+      resources: community,
+      risk: risk.hazardLevel,
+      hazardScore: risk.hazardScore,
+      confidence:
+        risk.calculationStatus === "NOT_CALCULATED"
+          ? null
+          : risk.confidenceScore,
+      assessment: scenario.demoActive
+        ? "Demo"
+        : risk.calculationStatus === "COMPLETE"
+          ? "Live"
+          : risk.rainfallSeverity !== null
+            ? "Limited"
+            : "Unavailable",
+      evidenceSummary: scenario.selectedDemo
+        ? [scenario.selectedDemo.evidenceSummary, ...risk.contributingFactors]
+        : risk.contributingFactors,
+      plan: currentPlan,
+      request: currentRequest,
+    }
+    const demoRows = DEMO_OPERATIONS_COMMUNITIES.map((entry): OperationsRow => {
+      const demo = DEMO_SCENARIOS[entry.scenarioId]
+      return {
+        id: entry.id,
+        source: "DEMO_SCENARIO",
+        provenance: "DEMO SCENARIO",
+        community: entry.community,
+        resources: entry.community,
+        risk: demo.result.hazardLevel,
+        hazardScore: demo.result.hazardScore,
+        confidence: demo.result.confidenceScore,
+        assessment: "Demo",
+        evidenceSummary: [
+          demo.evidenceSummary,
+          ...demo.result.contributingFactors,
+        ],
+        plan: calculateEvacuationPlan(entry.community, demo.result, "SAMPLE"),
+        request: null,
+      }
+    })
+    const otherRequestRows = requests
+      .filter((request) => request.id !== currentRequest?.id)
+      .map(requestRow)
+    return sortOperationsRows([
+      currentAssessment,
+      ...demoRows,
+      ...otherRequestRows,
+    ])
+  }, [community, currentPlan, isSampleData, requests, risk, scenario])
 
-  const filtered = rows.filter((row) => {
+  const filteredRows = rows.filter((row) => {
     if (filter === "high") return row.risk === "HIGH"
-    if (filter === "pending") return row.status === "PENDING"
-    if (filter === "inprogress") return row.status === "IN_PROGRESS"
+    if (filter === "open")
+      return Boolean(row.request && row.request.status !== "RESOLVED")
+    if (filter === "inprogress") return row.request?.status === "IN_PROGRESS"
     return true
   })
+  const selected =
+    filteredRows.find((row) => row.id === selectedId) ?? filteredRows[0] ?? null
 
-  const advanceStatus = (row: DashboardRow) => {
-    const nextStatus = nextSupportRequestStatus(row.status)
-    if (!nextStatus) return
-    if (row.source === "LOCAL_DEMO") {
-      transition(row.id, nextStatus)
-      return
-    }
-    setSamples((current) =>
-      current.map((sample) =>
-        sample.id === row.id ? { ...sample, status: nextStatus } : sample,
-      ),
-    )
-  }
+  useEffect(() => {
+    if (selected && selected.id !== selectedId) setSelectedId(selected.id)
+  }, [selected, selectedId])
 
   const highCount = rows.filter((row) => row.risk === "HIGH").length
-  const pendingCount = rows.filter((row) => row.status === "PENDING").length
-  const inProgressCount = rows.filter(
-    (row) => row.status === "IN_PROGRESS",
+  const mediumCount = rows.filter((row) => row.risk === "MEDIUM").length
+  const openRequestCount = requests.filter(
+    (request) => request.status !== "RESOLVED",
+  ).length
+  const inProgressCount = requests.filter(
+    (request) => request.status === "IN_PROGRESS",
   ).length
 
   return (
-    <div className="mx-auto max-w-6xl p-4 md:p-6">
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900 md:text-2xl">
-          Response Dashboard — Local Demonstration
-        </h1>
-        <p className="mt-0.5 text-sm text-gray-500">
+    <div className="mx-auto max-w-7xl p-4 md:p-6">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.15em] text-blue-700">
+            Demo Operations View
+          </div>
+          <h1 className="mt-1 text-xl font-bold text-gray-900 md:text-2xl">
+            NGO / Government Risk Triage
+          </h1>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
+            Combines deterministic risk evidence, community preparedness, and
+            browser-local support requests for presentation triage. This is not
+            connected to real organisations or emergency services.
+          </p>
+        </div>
+        <span className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700">
           {user.role === "government"
             ? "Government response role"
-            : "NGO coordinator role"}{" "}
-          · browser-only prototype
-        </p>
-      </div>
+            : "NGO coordinator role"}
+        </span>
+      </header>
 
       <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <strong>Demonstration only — not a connected response system.</strong>{" "}
-        Local requests and sample records on this page never contact an NGO,
-        government body, rescue team, field team, or emergency service.
+        No request on this page contacts an NGO, government body, rescue team,
+        field team, or emergency service.
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section
+        aria-label="Operations summary"
+        className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"
+      >
+        <SummaryStat label="High Risk" value={highCount} color="red" />
+        <SummaryStat label="Medium Risk" value={mediumCount} color="orange" />
         <SummaryStat
-          label="Local Demo Requests"
-          value={localRows.length}
+          label="Open Demo Requests"
+          value={openRequestCount}
           color="gray"
         />
-        <SummaryStat label="Demo High Risk" value={highCount} color="red" />
-        <SummaryStat label="Demo Pending" value={pendingCount} color="orange" />
         <SummaryStat
-          label="Demo In Progress"
+          label="Requests In Progress"
           value={inProgressCount}
           color="blue"
         />
-      </div>
+      </section>
 
-      <div className="grid gap-5 md:grid-cols-3">
-        <div className="md:col-span-2">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+        <section aria-label="Community triage list" className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <IconFilter size={13} className="text-gray-400" />
-            {[
-              { id: "all" as FilterType, label: "All" },
-              { id: "high" as FilterType, label: "Highest Risk" },
-              { id: "pending" as FilterType, label: "Pending" },
-              { id: "inprogress" as FilterType, label: "In Progress" },
-            ].map((filterOption) => (
+            <IconFilter size={14} className="text-gray-400" />
+            {([
+              ["all", "All communities"],
+              ["high", "High Risk"],
+              ["open", "Open Requests"],
+              ["inprogress", "In Progress"],
+            ] as const).map(([id, label]) => (
               <button
-                key={filterOption.id}
+                key={id}
                 type="button"
-                onClick={() => setFilter(filterOption.id)}
+                onClick={() => setFilter(id)}
                 className={`min-h-9 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  filter === filterOption.id
+                  filter === id
                     ? "bg-[#1e3a5f] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
-                {filterOption.label}
+                {label}
               </button>
             ))}
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-            {filtered.length > 0 ? (
+            {filteredRows.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {filtered.map((row) => (
-                  <button
-                    key={`${row.source}-${row.id}`}
-                    type="button"
-                    onClick={() => setSelectedId(row.id)}
-                    className={`w-full px-5 py-4 text-left transition-colors ${
-                      selected?.id === row.id
-                        ? "bg-blue-50"
-                        : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {row.name}
-                          </div>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              row.source === "LOCAL_DEMO"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-gray-100 text-gray-600"
-                            }`}
-                          >
-                            {row.source === "LOCAL_DEMO"
-                              ? "Local Demo Request"
-                              : "Sample Record"}
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-xs text-gray-500">
-                          Pop:{" "}
-                          <strong>{row.population.toLocaleString()}</strong> ·
-                          Vulnerable:{" "}
-                          <strong>{row.vulnerable.toLocaleString()}</strong>
-                        </div>
-                        <div className="mt-1 truncate text-xs text-gray-600">
-                          {row.assistance}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1.5">
-                        {row.risk ? (
-                          <RiskBadge level={row.risk} size="sm" />
-                        ) : (
-                          <span className="text-xs text-gray-500">
-                            Risk unavailable
-                          </span>
-                        )}
-                        <StatusPill status={row.status} />
-                      </div>
-                    </div>
-                    {row.requestTime !== "—" && (
-                      <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
-                        <IconClock size={11} />
-                        {row.source === "LOCAL_DEMO"
-                          ? "Submitted "
-                          : "Sample time "}
-                        {row.requestTime}
-                      </div>
-                    )}
-                  </button>
+                {filteredRows.map((row) => (
+                  <OperationsListItem
+                    key={row.id}
+                    row={row}
+                    selected={selected?.id === row.id}
+                    onSelect={() => setSelectedId(row.id)}
+                  />
                 ))}
               </div>
             ) : (
               <p className="p-8 text-center text-sm text-gray-500">
-                No demo records match this filter.
+                No demonstration records match this filter.
               </p>
             )}
           </div>
-        </div>
+        </section>
 
-        <div>
+        <aside className="min-w-0 lg:sticky lg:top-4">
           {selected ? (
-            <div className="rounded-2xl border border-gray-200 bg-white p-5">
-              <div className="mb-4 flex items-start justify-between gap-2">
-                <div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                      selected.source === "LOCAL_DEMO"
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
-                  >
-                    {selected.source === "LOCAL_DEMO"
-                      ? "Local Demo Request"
-                      : "Sample Record"}
-                  </span>
-                  <h2 className="mt-2 text-sm font-bold leading-tight text-gray-900">
-                    {selected.name}
-                  </h2>
-                </div>
-                {selected.risk && <RiskBadge level={selected.risk} size="sm" />}
-              </div>
-
-              {selected.request ? (
-                <LocalRequestDetails request={selected.request} />
-              ) : (
-                <SampleDetails row={selected} />
-              )}
-
-              <div className="mt-5 space-y-2">
-                {nextSupportRequestStatus(selected.status) ? (
-                  <button
-                    type="button"
-                    onClick={() => advanceStatus(selected)}
-                    className="min-h-11 w-full rounded-xl bg-blue-700 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
-                  >
-                    {actionLabel(selected.status)}
-                  </button>
-                ) : (
-                  <div className="py-2 text-center text-sm font-semibold text-green-700">
-                    Demo request resolved
-                  </div>
-                )}
-                <p className="text-center text-[11px] leading-4 text-gray-500">
-                  This changes local demo status only. No responder is
-                  dispatched.
-                </p>
-              </div>
-            </div>
+            <OperationsDetails row={selected} transition={transition} />
           ) : (
             <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-8 text-center">
               <IconUsers size={32} className="mx-auto mb-2 text-gray-300" />
-              <p className="text-sm text-gray-400">
-                Select a demo request or sample record to view details
+              <p className="text-sm text-gray-500">
+                Select a community to inspect its evidence.
               </p>
             </div>
           )}
-        </div>
+        </aside>
       </div>
     </div>
   )
 }
 
-function requestToDashboardRow(request: SupportRequest): DashboardRow {
-  const vulnerable = Object.values(request.vulnerableGroups).reduce(
-    (total, count) => total + count,
-    0,
+function OperationsListItem({
+  row,
+  selected,
+  onSelect,
+}: {
+  row: OperationsRow
+  selected: boolean
+  onSelect: () => void
+}) {
+  const gaps = importantGaps(row)
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full px-4 py-4 text-left transition-colors md:px-5 ${
+        selected ? "bg-blue-50" : "hover:bg-gray-50"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-gray-950">
+              {row.community.name}
+            </span>
+            <SourceBadge row={row} />
+            {row.request && <RequestBadge />}
+          </div>
+          <div className="mt-1 text-xs text-gray-500">
+            {row.community.township}, {row.community.region}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
+            <span>
+              Population{" "}
+              <strong>{row.community.population.toLocaleString()}</strong>
+            </span>
+            <span>
+              Vulnerable-group entries{" "}
+              <strong>{vulnerableCount(row).toLocaleString()}</strong>
+            </span>
+            <span>
+              Confidence <strong>{scoreText(row.confidence)}</strong>
+            </span>
+          </div>
+          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-600">
+            <strong>Important gaps:</strong> {gaps.join(" · ")}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {row.risk ? (
+            <RiskBadge level={row.risk} size="sm" />
+          ) : (
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+              Risk unavailable
+            </span>
+          )}
+          {row.request ? (
+            <StatusPill status={row.request.status} />
+          ) : (
+            <span className="text-xs font-medium text-gray-500">
+              No request
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   )
-  return {
-    id: request.id,
-    name: request.community.name,
-    risk: request.riskLevel,
-    population: request.community.population,
-    vulnerable,
-    assistance:
-      request.assistanceCategories.join(", ") ||
-      "No assistance categories selected",
-    requestTime: formatDateTime(request.createdAt),
-    status: request.status,
-    source: "LOCAL_DEMO",
-    request,
-  }
 }
 
-function LocalRequestDetails({ request }: { request: SupportRequest }) {
-  const groups = request.vulnerableGroups
-  const coordinates =
-    request.community.latitude !== null && request.community.longitude !== null
-      ? `${request.community.latitude.toFixed(4)}, ${request.community.longitude.toFixed(4)}`
-      : "Not available"
+function OperationsDetails({
+  row,
+  transition,
+}: {
+  row: OperationsRow
+  transition: (id: string, status: SupportRequestStatus) => unknown
+}) {
+  const nextStatus = row.request
+    ? nextSupportRequestStatus(row.request.status)
+    : null
   return (
-    <div className="space-y-4 text-sm">
-      <dl className="space-y-2.5">
-        <DetailRow
-          label="Township / region"
-          value={
-            [request.community.township, request.community.region]
-              .filter(Boolean)
-              .join(", ") || "Not supplied"
-          }
-        />
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <SourceBadge row={row} />
+            {row.request && <RequestBadge />}
+          </div>
+          <h2 className="mt-2 text-lg font-bold leading-tight text-gray-950">
+            {row.community.name}
+          </h2>
+          <p className="mt-1 text-xs text-gray-500">
+            {row.community.township}, {row.community.region}
+          </p>
+        </div>
+        {row.risk && <RiskBadge level={row.risk} size="sm" />}
+      </div>
+
+      <DetailSection title="Risk evidence">
+        <DetailRow label="Assessment" value={row.assessment} />
+        <DetailRow label="Hazard level" value={row.risk ?? "Unavailable"} />
+        <DetailRow label="Hazard score" value={scoreText(row.hazardScore)} />
+        <DetailRow label="Data confidence" value={scoreText(row.confidence)} />
+        <ul className="mt-3 space-y-1.5 text-xs leading-relaxed text-gray-700">
+          {row.evidenceSummary.slice(0, 4).map((item) => (
+            <li key={item}>• {item}</li>
+          ))}
+        </ul>
+      </DetailSection>
+
+      <DetailSection title="Community">
         <DetailRow
           label="Population"
-          value={request.community.population.toLocaleString()}
+          value={row.community.population.toLocaleString()}
         />
-        <DetailRow label="Children" value={groups.children.toLocaleString()} />
-        <DetailRow label="Elderly" value={groups.elderly.toLocaleString()} />
-        <DetailRow label="Disabled" value={groups.disabled.toLocaleString()} />
+        <DetailRow
+          label="Children"
+          value={row.community.children.toLocaleString()}
+        />
+        <DetailRow
+          label="Elderly"
+          value={row.community.elderly.toLocaleString()}
+        />
+        <DetailRow
+          label="People with disabilities"
+          value={row.community.disabled.toLocaleString()}
+        />
         <DetailRow
           label="Other vulnerable"
-          value={groups.otherVulnerable.toLocaleString()}
+          value={row.community.otherVulnerable.toLocaleString()}
         />
-        <DetailRow label="Coordinates" value={coordinates} />
-        <DetailRow
-          label="Categories"
-          value={request.assistanceCategories.join(", ")}
-        />
-        <DetailRow
-          label="Submitted"
-          value={formatDateTime(request.createdAt)}
-        />
-        <DetailRow label="Request ID" value={request.id} breakWords />
-        <DetailRow
-          label="Input provenance"
-          value={
-            request.dataProvenance === "SAMPLE"
-              ? "Sample / demo inputs"
-              : "User-confirmed inputs"
-          }
-        />
-        {request.responderLabel && (
-          <DetailRow label="Responder" value={request.responderLabel} />
-        )}
-        <div className="flex items-center justify-between gap-2">
-          <dt className="text-gray-500">Status</dt>
-          <dd>
-            <StatusPill status={request.status} />
-          </dd>
-        </div>
-      </dl>
+        <DetailRow label="Coordinates" value={coordinateText(row)} />
+      </DetailSection>
 
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Planner-derived gaps
-        </h3>
-        {request.planningGaps.length > 0 ? (
-          <ul className="mt-2 space-y-1.5 text-gray-700">
-            {request.planningGaps.map((gap) => (
-              <li key={gap}>• {gap}</li>
-            ))}
-          </ul>
+      <DetailSection title="Planning and resources">
+        {row.plan ? (
+          <PlanDetails plan={row.plan} resources={row.resources} />
         ) : (
-          <p className="mt-2 text-gray-600">
-            No planner-derived gaps recorded.
-          </p>
+          <RequestResourceDetails request={row.request!} />
         )}
-      </div>
-      {request.note && (
-        <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Community note
-          </h3>
-          <p className="mt-2 rounded-xl bg-gray-50 px-3 py-2.5 text-gray-700">
-            {request.note}
+      </DetailSection>
+
+      <DetailSection title="Support request">
+        {row.request ? (
+          <RequestDetails request={row.request} />
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700">
+            <strong>
+              {row.source === "DEMO_SCENARIO"
+                ? "No support request has been submitted for this demonstration scenario."
+                : "No support request has been submitted for this assessment record."}
+            </strong>
+            {row.risk === "HIGH" && (
+              <p className="mt-2 text-red-800">
+                High risk identified, but no support request has been sent.
+                Review needs and prepare manually if required.
+              </p>
+            )}
+          </div>
+        )}
+      </DetailSection>
+
+      {row.request && (
+        <div className="mt-5 border-t border-gray-100 pt-4">
+          {nextStatus ? (
+            <button
+              type="button"
+              onClick={() => transition(row.request!.id, nextStatus)}
+              className="min-h-11 w-full rounded-xl bg-blue-700 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800"
+            >
+              {actionLabel(row.request.status)}
+            </button>
+          ) : (
+            <div className="py-2 text-center text-sm font-semibold text-green-700">
+              Local demo request resolved
+            </div>
+          )}
+          <p className="mt-2 text-center text-[11px] leading-4 text-gray-500">
+            This changes browser-local demo status only. No responder is
+            dispatched.
           </p>
         </div>
       )}
@@ -454,21 +509,199 @@ function LocalRequestDetails({ request }: { request: SupportRequest }) {
   )
 }
 
-function SampleDetails({ row }: { row: DashboardRow }) {
+function PlanDetails({
+  plan,
+  resources,
+}: {
+  plan: EvacuationPlanResult
+  resources: OperationsRow["resources"]
+}) {
   return (
-    <dl className="space-y-2.5 text-sm">
-      <DetailRow label="Population" value={row.population.toLocaleString()} />
-      <DetailRow label="Vulnerable" value={row.vulnerable.toLocaleString()} />
-      <DetailRow label="Needs" value={row.assistance} />
-      <DetailRow label="Sample time" value={row.requestTime} />
-      <div className="flex items-center justify-between gap-2">
-        <dt className="text-gray-500">Status</dt>
-        <dd>
-          <StatusPill status={row.status} />
-        </dd>
-      </div>
-    </dl>
+    <>
+      <DetailRow
+        label="Shelter capacity"
+        value={numberText(plan.shelter.reportedCapacity)}
+      />
+      <DetailRow
+        label="Shelter shortage"
+        value={numberText(plan.shelter.shortage)}
+      />
+      <DetailRow label="Food" value={resources.food || "Unavailable"} />
+      <DetailRow label="Water" value={resources.water || "Unavailable"} />
+      <DetailRow label="Medicine" value={resources.medicine || "Unavailable"} />
+      <DetailRow label="Vehicles" value={numberText(plan.transport.vehicles)} />
+      <DetailRow label="Boats" value={numberText(plan.transport.boats)} />
+      <DetailRow
+        label="Planning status"
+        value={plan.planningStatus.replace(/_/g, " ")}
+      />
+      <ListDetail
+        label="Existing warnings"
+        values={plan.resourceWarnings}
+        empty="No resource warnings derived."
+      />
+      <ListDetail
+        label="Missing information"
+        values={plan.missingInformation}
+        empty="No missing information recorded."
+      />
+    </>
   )
+}
+
+function RequestResourceDetails({ request }: { request: SupportRequest }) {
+  const resources = request.resourceConditions
+  const shelterShortage = Math.max(
+    request.community.population - resources.shelterCapacity,
+    0,
+  )
+  return (
+    <>
+      <DetailRow
+        label="Shelter capacity"
+        value={resources.shelterCapacity.toLocaleString()}
+      />
+      <DetailRow
+        label="Shelter shortage"
+        value={shelterShortage.toLocaleString()}
+      />
+      <DetailRow label="Food" value={resources.food || "Unavailable"} />
+      <DetailRow label="Water" value={resources.water || "Unavailable"} />
+      <DetailRow label="Medicine" value={resources.medicine || "Unavailable"} />
+      <DetailRow
+        label="Vehicles"
+        value={(resources.cars + resources.trucks).toLocaleString()}
+      />
+      <DetailRow label="Boats" value={resources.boats.toLocaleString()} />
+      <ListDetail
+        label="Stored planning gaps"
+        values={request.planningGaps}
+        empty="No stored planning gaps."
+      />
+    </>
+  )
+}
+
+function RequestDetails({ request }: { request: SupportRequest }) {
+  return (
+    <>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs text-gray-500">Status</span>
+        <StatusPill status={request.status} />
+      </div>
+      <DetailRow
+        label="Categories"
+        value={request.assistanceCategories.join(", ") || "None selected"}
+      />
+      <DetailRow label="Request ID" value={request.id} breakWords />
+      <DetailRow label="Submitted" value={formatDateTime(request.createdAt)} />
+      <DetailRow
+        label="Responder"
+        value={request.responderLabel ?? "Not assigned"}
+      />
+      <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2.5 text-xs text-gray-700">
+        <strong>Community note:</strong> {request.note || "No note supplied."}
+      </div>
+    </>
+  )
+}
+
+function SourceBadge({ row }: { row: OperationsRow }) {
+  const style =
+    row.source === "DEMO_SCENARIO"
+      ? "bg-amber-100 text-amber-900"
+      : row.provenance === "LIVE / CURRENT"
+        ? "bg-green-100 text-green-800"
+        : row.provenance === "USER_CONFIRMED"
+          ? "bg-blue-100 text-blue-800"
+          : "bg-gray-100 text-gray-700"
+  const label =
+    row.source === "LOCAL_REQUEST"
+      ? row.provenance === "USER_CONFIRMED"
+        ? "USER_CONFIRMED"
+        : "SAMPLE"
+      : row.provenance
+  return (
+    <>
+      {row.source === "CURRENT" && row.provenance !== "DEMO SCENARIO" && (
+        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-green-800">
+          LIVE / CURRENT
+        </span>
+      )}
+      <span
+        className={`rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${style}`}
+      >
+        {label}
+      </span>
+    </>
+  )
+}
+
+function RequestBadge() {
+  return (
+    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-blue-800">
+      Local Demo Request
+    </span>
+  )
+}
+
+function DetailSection({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section className="border-b border-gray-100 py-4 last:border-b-0">
+      <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">
+        {title}
+      </h3>
+      {children}
+    </section>
+  )
+}
+
+function ListDetail({
+  label,
+  values,
+  empty,
+}: {
+  label: string
+  values: string[]
+  empty: string
+}) {
+  return (
+    <div className="mt-3">
+      <div className="text-xs font-semibold text-gray-700">{label}</div>
+      <ul className="mt-1 space-y-1 text-xs leading-relaxed text-gray-600">
+        {values.length > 0 ? (
+          values.map((value) => <li key={value}>• {value}</li>)
+        ) : (
+          <li>{empty}</li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+function importantGaps(row: OperationsRow): string[] {
+  const gaps = row.plan?.resourceWarnings ?? row.request?.planningGaps ?? []
+  return gaps.length > 0
+    ? gaps.slice(0, 2)
+    : ["No important resource gap recorded"]
+}
+
+function coordinateText(row: OperationsRow): string {
+  if (
+    row.source === "LOCAL_REQUEST" &&
+    row.request &&
+    (row.request.community.latitude === null ||
+      row.request.community.longitude === null)
+  ) {
+    return "Unavailable"
+  }
+  return `${row.community.latitude.toFixed(4)}, ${row.community.longitude.toFixed(4)}`
 }
 
 function actionLabel(status: SupportRequestStatus): string {
@@ -488,15 +721,15 @@ function SummaryStat({
 }) {
   const textColor =
     color === "red"
-      ? "text-red-600"
+      ? "text-red-700"
       : color === "orange"
-        ? "text-amber-600"
+        ? "text-amber-700"
         : color === "blue"
-          ? "text-blue-600"
-          : "text-gray-800"
+          ? "text-blue-700"
+          : "text-gray-900"
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-1 text-xs text-gray-500">{label}</div>
+      <div className="mb-1 text-xs font-medium text-gray-600">{label}</div>
       <div className={`font-mono text-2xl font-bold ${textColor}`}>{value}</div>
     </div>
   )
@@ -528,17 +761,25 @@ function DetailRow({
   breakWords?: boolean
 }) {
   return (
-    <div className="flex justify-between gap-2">
-      <dt className="shrink-0 text-gray-500">{label}</dt>
-      <dd
+    <div className="flex justify-between gap-3 py-1 text-sm">
+      <span className="shrink-0 text-gray-500">{label}</span>
+      <span
         className={`text-right font-medium text-gray-900 ${
           breakWords ? "break-all" : ""
         }`}
       >
         {value}
-      </dd>
+      </span>
     </div>
   )
+}
+
+function scoreText(value: number | null): string {
+  return value === null ? "Unavailable" : `${value.toFixed(1)} / 100`
+}
+
+function numberText(value: number | null): string {
+  return value === null ? "Unavailable" : value.toLocaleString()
 }
 
 function formatDateTime(value: string): string {

@@ -50,7 +50,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
               <div className="text-xs font-medium text-gray-500">Current community</div>
               <div className="mt-0.5 text-sm font-semibold text-gray-900">{community.name}</div>
               <div className="mt-0.5 text-xs text-gray-500">
-                Community Information is the source of truth for this single-community prototype.
+                Demo workspace starts with sample data. You can review and replace it after signing in.
               </div>
             </div>
 

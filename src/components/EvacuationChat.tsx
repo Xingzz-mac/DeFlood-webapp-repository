@@ -318,7 +318,8 @@ export default function EvacuationChat({
     )))
   }
 
-  const demoActive = risk.engineVersion.startsWith('deflood-dev-scenario')
+  const demoActive = ('assessmentProvenance' in risk && risk.assessmentProvenance === 'DEMO')
+    || risk.engineVersion.startsWith('deflood-dev-scenario')
 
   return (
     <section

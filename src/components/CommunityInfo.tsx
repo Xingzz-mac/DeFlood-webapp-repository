@@ -153,7 +153,7 @@ export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
 
       {isSampleData && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Demo community data</strong> — confirm or edit before use.
+          <strong>Sample demo workspace</strong> — Ayeyarwady Delta Zone 3 is starter data only. Review or replace it, then save Community Information to mark the inputs as user-confirmed.
         </div>
       )}
 

@@ -80,11 +80,13 @@ function SourceHeader({
   title,
   metadata,
   status,
+  demo = false,
 }: {
   icon: ReactNode
   title: string
   metadata: SourceMetadata
   status?: SourceStatus
+  demo?: boolean
 }) {
   return (
     <div className="border-b border-gray-100 pb-3">
@@ -99,7 +101,9 @@ function SourceHeader({
             </p>
           </div>
         </div>
-        {statusBadge(status ?? metadata.status)}
+        {demo
+          ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">Synthetic demo</span>
+          : statusBadge(status ?? metadata.status)}
       </div>
       {metadata.refreshAttempt && (
         <p className="mt-2 text-xs text-amber-700">
@@ -111,10 +115,10 @@ function SourceHeader({
   )
 }
 
-function WeatherCard({ model, status }: { model: WeatherModelData; status: SourceStatus }) {
+function WeatherCard({ model, status, demo }: { model: WeatherModelData; status: SourceStatus; demo: boolean }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
-      <SourceHeader icon={<IconDroplets size={18} />} title={model.label} metadata={model.metadata} status={status} />
+      <SourceHeader icon={<IconDroplets size={18} />} title={model.label} metadata={model.metadata} status={status} demo={demo} />
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         {model.horizons.map(horizon => (
           <div key={horizon.hours} className="rounded-xl bg-gray-50 p-3">
@@ -138,13 +142,13 @@ function WeatherCard({ model, status }: { model: WeatherModelData; status: Sourc
   )
 }
 
-function RiverCard({ river }: { river: RiverData }) {
+function RiverCard({ river, demo }: { river: RiverData; demo: boolean }) {
   const trend = river.trend === 'unavailable'
     ? 'Unavailable'
     : river.trend[0].toUpperCase() + river.trend.slice(1)
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
-      <SourceHeader icon={<IconWaves size={18} />} title="GloFAS modeled river discharge" metadata={river.metadata} />
+      <SourceHeader icon={<IconWaves size={18} />} title="GloFAS modeled river discharge" metadata={river.metadata} demo={demo} />
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-gray-50 p-3">
           <div className="text-xs font-medium text-gray-500">Three-day discharge peak</div>
@@ -163,9 +167,15 @@ function RiverCard({ river }: { river: RiverData }) {
         Primary near-term availability: {river.primaryValidDays}/3 valid river_discharge days.
       </p>
       <div className="mt-3 rounded-xl bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
-        <div className="font-semibold">{riverModelLocationText(river)}</div>
+        <div className="font-semibold">
+          {demo
+            ? 'Synthetic demo river point at the scenario coordinate.'
+            : riverModelLocationText(river)}
+        </div>
         <div className="mt-1 text-blue-800">
-          GloFAS uses an approximately 5 km river grid. A nearby modeled river point may be used when the exact community coordinate has no usable discharge series.
+          {demo
+            ? 'This is synthetic environmental evidence, not a live GloFAS query or observed gauge.'
+            : 'GloFAS uses an approximately 5 km river grid. A nearby modeled river point may be used when the exact community coordinate has no usable discharge series.'}
         </div>
       </div>
       <div className="mt-4 overflow-x-auto">
@@ -208,10 +218,10 @@ function RiverCard({ river }: { river: RiverData }) {
   )
 }
 
-function TerrainCard({ terrain }: { terrain: TerrainData }) {
+function TerrainCard({ terrain, demo }: { terrain: TerrainData; demo: boolean }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5">
-      <SourceHeader icon={<IconMountain size={18} />} title="Terrain elevation" metadata={terrain.metadata} />
+      <SourceHeader icon={<IconMountain size={18} />} title="Terrain elevation" metadata={terrain.metadata} demo={demo} />
       <div className="mt-4 font-mono text-lg font-bold text-gray-900">
         {fmtNumber(terrain.elevation, terrain.unit)}
       </div>
@@ -401,18 +411,23 @@ function ScoreExplanationPanel({
 function FourModelSummary({
   risk,
   data,
+  demoActive,
 }: {
   risk: RiskResult
   data: EnvironmentalData | null
+  demoActive: boolean
 }) {
   const horizon = risk.weatherConsensus.horizons.find(candidate => candidate.hours === 72)
-  const demoScenario = risk.engineVersion === 'deflood-dev-scenario-v1'
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 md:col-span-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold text-gray-900">Four-model rainfall outlook</h3>
-          <p className="mt-1 text-xs text-gray-500">Usable 72-hour totals from the current deterministic forecast evidence.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {demoActive
+              ? 'Usable 72-hour totals from synthetic evidence passed through the deterministic engine.'
+              : 'Usable 72-hour totals from the current deterministic forecast evidence.'}
+          </p>
         </div>
         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
           Usable models: {risk.weatherConsensus.usableModelCount} / {risk.weatherConsensus.totalConfiguredModelCount}
@@ -421,7 +436,7 @@ function FourModelSummary({
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {WEATHER_MODEL_KEYS.map(key => {
           const model = data?.weatherModels[key]
-          const usable = !demoScenario && Boolean(horizon?.modelKeys.includes(key))
+          const usable = Boolean(horizon?.modelKeys.includes(key))
           const total = usable
             ? model?.horizons.find(candidate => candidate.hours === 72)?.total ?? null
             : null
@@ -434,7 +449,7 @@ function FourModelSummary({
                 {total === null ? 'Unavailable' : `${total.toFixed(1)} mm`}
               </div>
               <div className="mt-1 text-xs capitalize text-gray-500">
-                {demoScenario ? 'Model detail not included in demo fixture' : risk.sourceInformation[key]}
+                {demoActive ? 'Synthetic demo evidence' : risk.sourceInformation[key]}
               </div>
             </div>
           )
@@ -445,7 +460,12 @@ function FourModelSummary({
         <span>Agreement: <strong>{risk.modelAgreement.label}</strong></span>
         <span>Agreement score: <strong className="font-mono">{risk.modelAgreement.score?.toFixed(1) ?? 'Unavailable'}</strong></span>
       </div>
-      <p className="mt-3 text-xs text-gray-500">Consensus is modeled rainfall, not probability. Agreement affects Data Confidence only.</p>
+      <p className="mt-3 text-xs text-gray-500">
+        {demoActive
+          ? 'Consensus is synthetic demonstration rainfall, not a live forecast or probability.'
+          : 'Consensus is modeled rainfall, not probability.'}{' '}
+        Agreement affects Data Confidence only.
+      </p>
     </div>
   )
 }
@@ -453,9 +473,11 @@ function FourModelSummary({
 function DeterministicScoreExplanation({
   risk,
   data,
+  demoActive,
 }: {
   risk: RiskResult
   data: EnvironmentalData | null
+  demoActive: boolean
 }) {
   const hazardItems: ExplanationItem[] = risk.hazardBreakdown.map((item: HazardBreakdownItem) => ({
     ...item,
@@ -505,7 +527,7 @@ function DeterministicScoreExplanation({
             weightLabel="Configured weight"
           />
         )}
-        <FourModelSummary risk={risk} data={data} />
+        <FourModelSummary risk={risk} data={data} demoActive={demoActive} />
       </div>
     </section>
   )
@@ -514,12 +536,12 @@ function DeterministicScoreExplanation({
 export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
   const { community } = useCommunity()
   const risk = useRisk()
+  const demoActive = risk.assessmentProvenance === 'DEMO'
   const data = risk.environmentalData
   const riverFreshness = data ? calculateFreshness(data).sources.river : null
-  const riverExpired = riverFreshness !== null
+  const riverExpired = !demoActive && riverFreshness !== null
     && riverFreshness.ageMs !== null
     && riverFreshness.ageMs > riverFreshness.maxAgeMs
-  const demoRiverUnavailable = risk.engineVersion === 'deflood-dev-scenario-v1'
   const presentation = floodAssessmentPresentation(risk)
   const statusLabel = presentation.mode === 'COMPLETE'
     ? `${presentation.label} Flood Hazard`
@@ -538,17 +560,26 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {demoActive && (
+            <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-950">
+              DEMO
+            </span>
+          )}
           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusStyle}`}>
             {statusLabel}
           </span>
-          <button
-            type="button"
-            onClick={risk.refresh}
-            disabled={risk.loading}
-            className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50"
-          >
-            <IconRefresh size={13} className={risk.loading ? 'animate-spin' : ''} /> Refresh sources
-          </button>
+          {demoActive ? (
+            <span className="text-xs font-semibold text-amber-800">Synthetic evidence</span>
+          ) : (
+            <button
+              type="button"
+              onClick={risk.refresh}
+              disabled={risk.loading}
+              className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50"
+            >
+              <IconRefresh size={13} className={risk.loading ? 'animate-spin' : ''} /> Refresh sources
+            </button>
+          )}
         </div>
       </div>
 
@@ -623,14 +654,16 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
                 Open Evacuation Planner
               </button>
             )}
-            <button
-              type="button"
-              onClick={risk.refresh}
-              disabled={risk.loading}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Refresh data
-            </button>
+            {!demoActive && (
+              <button
+                type="button"
+                onClick={risk.refresh}
+                disabled={risk.loading}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Refresh data
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -642,7 +675,8 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
         trendLabel={risk.riverTrend?.label ?? null}
         loading={risk.loading}
         expired={riverExpired}
-        demoUnavailable={demoRiverUnavailable}
+        demoUnavailable={false}
+        demoScenario={demoActive}
       />
 
       <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-5">
@@ -657,7 +691,7 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
         </ul>
       </div>
 
-      <DeterministicScoreExplanation risk={risk} data={data} />
+      <DeterministicScoreExplanation risk={risk} data={data} demoActive={demoActive} />
 
       <details className="rounded-2xl border border-gray-200 bg-white">
         <summary className="cursor-pointer list-none rounded-2xl px-5 py-4 text-sm font-semibold text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -671,12 +705,12 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
               <span>Model agreement: {risk.confidenceComponents.modelAgreement?.toFixed(1) ?? 'Unavailable'}</span>
               <span>Ensemble consistency: {risk.confidenceComponents.ensembleConsistency?.toFixed(1) ?? 'Unavailable'}</span>
               <span>Freshness: {risk.confidenceComponents.freshness.toFixed(1)} / 100</span>
-              <span>AIFS: {risk.sourceInformation.aifs}</span>
-              <span>IFS: {risk.sourceInformation.ifs}</span>
-              <span>GFS: {risk.sourceInformation.gfs}</span>
-              <span>UKMO: {risk.sourceInformation.ukmo}</span>
-              <span>River: {risk.sourceInformation.river}</span>
-              <span>Elevation: {risk.sourceInformation.elevation}</span>
+              <span>AIFS: {demoActive ? 'synthetic demo' : risk.sourceInformation.aifs}</span>
+              <span>IFS: {demoActive ? 'synthetic demo' : risk.sourceInformation.ifs}</span>
+              <span>GFS: {demoActive ? 'synthetic demo' : risk.sourceInformation.gfs}</span>
+              <span>UKMO: {demoActive ? 'synthetic demo' : risk.sourceInformation.ukmo}</span>
+              <span>River: {demoActive ? 'synthetic demo' : risk.sourceInformation.river}</span>
+              <span>Elevation: {demoActive ? 'synthetic demo' : risk.sourceInformation.elevation}</span>
             </div>
           </div>
           {data ? (
@@ -707,11 +741,11 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
             </div>
             <p className="mt-3 text-xs text-gray-500">Model agreement affects Data Confidence only and never directly changes Flood Hazard.</p>
           </div>
-          <WeatherCard model={data.weatherModels.aifs} status={risk.sourceInformation.aifs} />
-          <WeatherCard model={data.weatherModels.ifs} status={risk.sourceInformation.ifs} />
-          <WeatherCard model={data.weatherModels.gfs} status={risk.sourceInformation.gfs} />
-          <WeatherCard model={data.weatherModels.ukmo} status={risk.sourceInformation.ukmo} />
-          <RiverCard river={data.river} />
+          <WeatherCard model={data.weatherModels.aifs} status={risk.sourceInformation.aifs} demo={demoActive} />
+          <WeatherCard model={data.weatherModels.ifs} status={risk.sourceInformation.ifs} demo={demoActive} />
+          <WeatherCard model={data.weatherModels.gfs} status={risk.sourceInformation.gfs} demo={demoActive} />
+          <WeatherCard model={data.weatherModels.ukmo} status={risk.sourceInformation.ukmo} demo={demoActive} />
+          <RiverCard river={data.river} demo={demoActive} />
           <div className="rounded-2xl border border-gray-200 bg-white p-5">
             <h2 className="font-semibold text-gray-900">Historical river comparison</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -741,7 +775,7 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
             </div>
             <p className="mt-3 text-xs text-gray-500">The percentile describes historical same-season discharge unusualness, not flood probability.</p>
           </div>
-          <TerrainCard terrain={data.terrain} />
+          <TerrainCard terrain={data.terrain} demo={demoActive} />
             </>
           ) : (
             <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">Supporting environmental data is not available yet.</p>
