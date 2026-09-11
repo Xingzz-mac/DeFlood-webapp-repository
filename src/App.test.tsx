@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { readFileSync } from 'node:fs'
 import { act, create } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -100,6 +101,22 @@ describe('desktop Guardian web handoff', () => {
       name: 'Demo leader',
     })
     expect(serialized).not.toMatch(/pin|password|secret|token|n8n|groq|worker/i)
+    await act(async () => renderer.unmount())
+  })
+
+  it('bounds the shell and keeps the sidebar outside the primary scroll pane', async () => {
+    const { renderer } = await signInAt('')
+    const mains = renderer.root.findAllByType('main')
+    expect(mains).toHaveLength(1)
+    expect(mains[0].props.className).toContain('relative')
+    expect(mains[0].props.className).toContain('min-h-0')
+    expect(mains[0].props.className).toContain('overflow-y-auto')
+    expect(mains[0].findAllByProps({ 'data-sign-out': true })).toHaveLength(0)
+    expect(mains[0].parent!.props.className).toContain('min-h-0')
+    expect(mains[0].parent!.props.className).toContain('overflow-hidden')
+    const css = readFileSync(new URL('./index.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/html,\s*body,\s*#root\s*\{[^}]*height: 100%;[^}]*overflow: hidden;/)
+    expect(css).toMatch(/#root\s*\{\s*height: 100vh;\s*height: 100dvh;/)
     await act(async () => renderer.unmount())
   })
 

@@ -55,7 +55,13 @@ interface OperationsRow {
   request: SupportRequest | null
 }
 
-type FilterType = "all" | "high" | "open" | "inprogress"
+type FilterType = "all" | "high" | "open" | "inprogress" | "gaps"
+
+function preparednessGaps(row: OperationsRow): string[] {
+  return row.plan
+    ? [...row.plan.resourceWarnings, ...row.plan.missingInformation]
+    : row.request?.planningGaps ?? []
+}
 
 const RISK_ORDER: Record<FloodHazardLevel, number> = {
   HIGH: 0,
@@ -120,6 +126,7 @@ function requestRow(request: SupportRequest): OperationsRow {
 }
 
 export default function NGODashboard({ user }: NGODashboardProps) {
+  const government = user.role === "government"
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
   const currentPlan = useEvacuationPlan()
@@ -183,16 +190,20 @@ export default function NGODashboard({ user }: NGODashboardProps) {
       }
     })
     const otherRequestRows = requests
-      .filter((request) => request.id !== currentRequest?.id)
+      .filter((request, index) => government
+        ? !requestBelongsToCommunity(request, community) &&
+          !requests.slice(0, index).some(previous => requestBelongsToCommunity(request, previous.community))
+        : request.id !== currentRequest?.id)
       .map(requestRow)
     return sortOperationsRows([
       currentAssessment,
       ...demoRows,
       ...otherRequestRows,
     ])
-  }, [community, currentPlan, isSampleData, requests, risk, scenario])
+  }, [community, currentPlan, government, isSampleData, requests, risk, scenario])
 
   const filteredRows = rows.filter((row) => {
+    if (filter === "gaps") return preparednessGaps(row).length > 0
     if (filter === "high") return row.risk === "HIGH"
     if (filter === "open")
       return Boolean(row.request && row.request.status !== "RESOLVED")
@@ -220,57 +231,64 @@ export default function NGODashboard({ user }: NGODashboardProps) {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.15em] text-blue-700">
-            Demo Operations View
+            {government ? "Government / Local Authority" : "Demo Operations View"}
           </div>
           <h1 className="mt-1 text-xl font-bold text-gray-900 md:text-2xl">
-            NGO / Government Risk Triage
+            {government ? "Regional Coordination" : "NGO Assistance / Response"}
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
-            Combines deterministic risk evidence, community preparedness, and
+            {government ? "Regional overview of flood risk, preparedness gaps, and support-request activity across communities." : <>Combines deterministic risk evidence, community preparedness, and
             browser-local support requests for presentation triage. This is not
-            connected to real organisations or emergency services.
+            connected to real organisations or emergency services.</>}
           </p>
         </div>
         <span className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700">
           {user.role === "government"
-            ? "Government response role"
+            ? "Government coordinates"
             : "NGO coordinator role"}
         </span>
       </header>
 
-      <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+      {government ? (
+        <p className="mb-5 text-xs leading-relaxed text-gray-500">
+          Prototype coordination view — demo communities and requests are not connected to real government or emergency systems.
+        </p>
+      ) : <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <strong>Demonstration only — not a connected response system.</strong>{" "}
         No request on this page contacts an NGO, government body, rescue team,
         field team, or emergency service.
-      </div>
+      </div>}
 
       <section
-        aria-label="Operations summary"
+        aria-label={government ? "Regional summary" : "Operations summary"}
         className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"
       >
-        <SummaryStat label="High Risk" value={highCount} color="red" />
-        <SummaryStat label="Medium Risk" value={mediumCount} color="orange" />
+        <SummaryStat label={government ? "High Risk Communities" : "High Risk"} value={highCount} color="red" />
+        <SummaryStat label={government ? "Medium Risk Communities" : "Medium Risk"} value={mediumCount} color="orange" />
         <SummaryStat
-          label="Open Demo Requests"
+          label={government ? "Open Support Requests" : "Open Demo Requests"}
           value={openRequestCount}
           color="gray"
         />
         <SummaryStat
-          label="Requests In Progress"
-          value={inProgressCount}
+          label={government ? "Communities with Preparedness Gaps" : "Requests In Progress"}
+          value={government ? rows.filter(row => preparednessGaps(row).length > 0).length : inProgressCount}
           color="blue"
         />
       </section>
 
+      {government && <p className="mb-4 text-xs text-gray-500">Counts cover this workspace’s current community, fictional scenarios, and latest stored snapshots of other communities. Open requests include all unresolved local requests.</p>}
+
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
         <section aria-label="Community triage list" className="min-w-0">
+          {government && <h2 className="mb-3 font-semibold text-gray-900">Regional Community Overview</h2>}
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <IconFilter size={14} className="text-gray-400" />
             {([
               ["all", "All communities"],
               ["high", "High Risk"],
               ["open", "Open Requests"],
-              ["inprogress", "In Progress"],
+              [government ? "gaps" : "inprogress", government ? "Preparedness Gaps" : "In Progress"],
             ] as const).map(([id, label]) => (
               <button
                 key={id}
@@ -294,6 +312,7 @@ export default function NGODashboard({ user }: NGODashboardProps) {
                   <OperationsListItem
                     key={row.id}
                     row={row}
+                    government={government}
                     selected={selected?.id === row.id}
                     onSelect={() => setSelectedId(row.id)}
                   />
@@ -309,7 +328,7 @@ export default function NGODashboard({ user }: NGODashboardProps) {
 
         <aside className="min-w-0 lg:sticky lg:top-4">
           {selected ? (
-            <OperationsDetails row={selected} transition={transition} />
+            <OperationsDetails row={selected} transition={transition} government={government} />
           ) : (
             <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-8 text-center">
               <IconUsers size={32} className="mx-auto mb-2 text-gray-300" />
@@ -326,10 +345,12 @@ export default function NGODashboard({ user }: NGODashboardProps) {
 
 function OperationsListItem({
   row,
+  government,
   selected,
   onSelect,
 }: {
   row: OperationsRow
+  government: boolean
   selected: boolean
   onSelect: () => void
 }) {
@@ -368,7 +389,7 @@ function OperationsListItem({
             </span>
           </div>
           <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-gray-600">
-            <strong>Important gaps:</strong> {gaps.join(" · ")}
+            <strong>{government ? "Main preparedness gap:" : "Important gaps:"}</strong> {government ? preparednessGaps(row)[0] ?? "No preparedness gap recorded" : gaps.join(" · ")}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -395,8 +416,10 @@ function OperationsListItem({
 function OperationsDetails({
   row,
   transition,
+  government,
 }: {
   row: OperationsRow
+  government: boolean
   transition: (id: string, status: SupportRequestStatus) => unknown
 }) {
   const nextStatus = row.request
@@ -456,7 +479,7 @@ function OperationsDetails({
         <DetailRow label="Coordinates" value={coordinateText(row)} />
       </DetailSection>
 
-      <DetailSection title="Planning and resources">
+      <DetailSection title={government ? "Preparedness" : "Planning and resources"}>
         {row.plan ? (
           <PlanDetails plan={row.plan} resources={row.resources} />
         ) : (
@@ -464,7 +487,17 @@ function OperationsDetails({
         )}
       </DetailSection>
 
-      <DetailSection title="Support request">
+      {government && (
+        <DetailSection title="Coordination Focus">
+          <ListDetail
+            label={row.plan ? "Existing eligible planning actions" : "Stored planning gaps"}
+            values={row.plan ? row.plan.allowedActions.map(action => action.text) : row.request?.planningGaps ?? []}
+            empty="No deterministic coordination focus recorded."
+          />
+        </DetailSection>
+      )}
+
+      <DetailSection title={government ? "Support activity" : "Support request"}>
         {row.request ? (
           <RequestDetails request={row.request} />
         ) : (
@@ -484,7 +517,7 @@ function OperationsDetails({
         )}
       </DetailSection>
 
-      {row.request && (
+      {!government && row.request && (
         <div className="mt-5 border-t border-gray-100 pt-4">
           {nextStatus ? (
             <button

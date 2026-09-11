@@ -6,7 +6,7 @@ import {
 } from "react-test-renderer"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { CommunityData } from "../context/CommunityContext"
-import { DEMO_SCENARIOS } from "../services/demoScenarios"
+import { DEMO_OPERATIONS_COMMUNITIES, DEMO_SCENARIOS } from "../services/demoScenarios"
 import { calculateEvacuationPlan } from "../services/evacuationEngine"
 import {
   createSupportRequest,
@@ -199,6 +199,8 @@ describe("NGO / government local demo request dashboard", () => {
     const text = pageText(renderer!.toJSON())
 
     expect(text).toContain("Local Demo Request")
+    expect(text).toContain("NGO Assistance / Response")
+    expect(text).not.toContain("Regional Coordination")
     expect(text).toContain("Locally Submitted Community")
     expect(text.indexOf("Locally Submitted Community")).toBeLessThan(
       text.indexOf("Demo Delta Community A"),
@@ -224,7 +226,7 @@ describe("NGO / government local demo request dashboard", () => {
     let renderer: ReturnType<typeof create> | null = null
     const renderDashboard = () => (
       <NGODashboard
-        user={{ role: "government", name: "Demo responder" }}
+        user={{ role: "ngo", name: "Demo responder" }}
         onNavigate={vi.fn()}
       />
     )
@@ -276,6 +278,78 @@ describe("NGO / government local demo request dashboard", () => {
         .findAllByType("button")
         .some((button) => instanceText(button).includes("Accept Request")),
     ).toBe(false)
+    await act(async () => renderer?.unmount())
+  })
+
+  it("shows regional counts, deterministic focus, provenance and read-only support activity for Government", async () => {
+    const latest = localRequest("IN_PROGRESS")
+    const older = { ...localRequest(), id: "older-request", createdAt: "2026-09-01T04:00:00.000Z" }
+    useSupportRequestsMock.mockReturnValue({ requests: [latest, older], transition })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(<NGODashboard user={{ role: "government", name: "Coordinator" }} onNavigate={vi.fn()} />)
+    })
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain("Regional Coordination")
+    expect(text).not.toContain("NGO Assistance / Response")
+    expect(text).toContain("Prototype coordination view")
+    expect(text).toMatch(/High Risk Communities\s*2/)
+    expect(text).toMatch(/Medium Risk Communities\s*2/)
+    expect(text).toMatch(/Open Support Requests\s*2/)
+    const plans = [
+      calculateEvacuationPlan(currentCommunity, DEMO_SCENARIOS["demo-medium"].result, "USER_CONFIRMED"),
+      ...DEMO_OPERATIONS_COMMUNITIES.map(entry => calculateEvacuationPlan(entry.community, DEMO_SCENARIOS[entry.scenarioId].result, "SAMPLE")),
+    ]
+    const gapCount = plans.filter(plan => plan.resourceWarnings.length + plan.missingInformation.length > 0).length + 1
+    expect(text).toMatch(new RegExp(`Communities with Preparedness Gaps\\s*${gapCount}`))
+    expect(text).toContain("In Progress")
+    expect(text).toContain("Demo Response Team")
+    expect(text).toContain("Shelter, Water")
+    expect(text).toContain("LIVE / CURRENT")
+    expect(text).toContain("USER_CONFIRMED")
+    expect(text).toContain("DEMO SCENARIO")
+    expect(text).not.toMatch(/Accept Request|Mark In Progress|Resolve Request|priority score/i)
+    const triage = renderer!.root.findByProps({ "aria-label": "Community triage list" })
+    const listText = instanceText(triage)
+    expect(listText.indexOf("Locally Submitted Community")).toBeLessThan(listText.indexOf("Demo Delta Community A"))
+    expect(listText.indexOf("Demo Delta Community A")).toBeLessThan(listText.indexOf("Demo Riverside Community B"))
+    expect(listText.indexOf("Demo Riverside Community B")).toBeLessThan(listText.indexOf("Demo Township Community C"))
+    expect(triage.findAllByType("button").filter(button => instanceText(button).includes("Locally Submitted Community"))).toHaveLength(1)
+
+    await act(async () => buttonNamed(renderer!.root, "Demo Delta Community A").props.onClick())
+    const focus = renderer!.root.findAllByType("section").find(section =>
+      section.findAllByType("h3").some(heading => instanceText(heading) === "Coordination Focus"),
+    )!
+    const highPlan = plans[1]
+    expect(focus.findAllByType("li").map(item => instanceText(item).replace(/^•\s*/, ""))).toEqual(highPlan.allowedActions.map(action => action.text))
+    const highText = pageText(renderer!.toJSON())
+    expect(highText).toContain("No support request has been submitted for this demonstration scenario.")
+    expect(highText).toContain("Sample drinking water supply is critical.")
+    expect(transition).not.toHaveBeenCalled()
+    await act(async () => renderer?.unmount())
+  })
+
+  it("keeps sample and Limited assessment labels visible in the government current-community detail", async () => {
+    contextMocks.useCommunity.mockReturnValue({ community: currentCommunity, isSampleData: true })
+    contextMocks.useRisk.mockReturnValue({
+      ...DEMO_SCENARIOS["demo-incomplete"].result,
+      hazardLevel: null,
+      hazardScore: null,
+      rainfallSeverity: 30,
+      calculationStatus: "INCOMPLETE",
+    })
+    useSupportRequestsMock.mockReturnValue({ requests: [], transition })
+    let renderer: ReturnType<typeof create> | null = null
+    await act(async () => {
+      renderer = create(<NGODashboard user={{ role: "government", name: "Coordinator" }} onNavigate={vi.fn()} />)
+    })
+    await act(async () => buttonNamed(renderer!.root, currentCommunity.name).props.onClick())
+    const text = pageText(renderer!.toJSON())
+    expect(text).toContain("SAMPLE")
+    expect(text).toContain("LIVE / CURRENT")
+    expect(text).toMatch(/Assessment\s*Limited/)
+    expect(text).toMatch(/Hazard level\s*Unavailable/)
+    expect(text).not.toMatch(/Accept Request|Mark In Progress|Resolve Request/)
     await act(async () => renderer?.unmount())
   })
 

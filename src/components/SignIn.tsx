@@ -31,7 +31,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#1e3a5f] flex flex-col items-center justify-center px-4 py-8">
+    <div className="min-h-full bg-[#1e3a5f] flex flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-md">
         {/* Card */}
         <div className="rounded-2xl bg-white p-6 shadow-2xl sm:p-8">

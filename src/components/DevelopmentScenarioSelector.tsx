@@ -11,7 +11,7 @@ export default function DevelopmentScenarioSelector() {
 
   return (
     <div
-      className={`border-b px-4 py-2.5 md:px-6 ${
+      className={`shrink-0 border-b px-4 py-2.5 md:px-6 ${
         scenario.demoActive
           ? "border-amber-300 bg-amber-50"
           : "border-blue-100 bg-white"

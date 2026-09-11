@@ -36,7 +36,7 @@ const roleLabels: Record<string, string> = {
   mayor: 'Mayor',
   assistant: 'Authorised Assistant',
   ngo: 'NGO',
-  government: 'Gov. / Disaster Response',
+  government: 'Government / Local Authority',
 }
 
 export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: SidebarProps) {
@@ -53,7 +53,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-4 space-y-0.5">
         {navItems.map(({ id, label, Icon }) => {
           const active = activeSection === id
           return (
@@ -67,14 +67,14 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
               }`}
             >
               <Icon size={17} />
-              {label}
+              {id === 'dashboard' && user.role === 'government' ? 'Regional Coordination' : label}
             </button>
           )
         })}
       </nav>
 
       {/* User + Sign Out */}
-      <div className="px-4 py-4 border-t border-white/10">
+      <div className="shrink-0 px-4 py-4 border-t border-white/10">
         <GuardianLauncher />
         <div className="mb-3 px-1">
           <div className="text-sm font-semibold text-white leading-tight">{user.name}</div>

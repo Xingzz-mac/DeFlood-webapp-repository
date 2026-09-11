@@ -58,7 +58,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <SignIn onSignIn={signIn} />
+    return <div className="relative h-full min-h-0 overflow-y-auto overscroll-y-contain"><SignIn onSignIn={signIn} /></div>
   }
 
   return (
@@ -130,9 +130,9 @@ function SignedInApplication({
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="relative flex h-full min-h-0 bg-gray-50 overflow-hidden">
       {/* Desktop sidebar */}
-      <div className="hidden md:flex md:flex-shrink-0">
+      <div className="hidden h-full min-h-0 md:flex md:flex-shrink-0">
         <Sidebar
           user={user}
           activeSection={section}
@@ -145,7 +145,7 @@ function SignedInApplication({
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div className="fixed inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <div className="relative z-50 flex-shrink-0">
+          <div className="relative z-50 h-full min-h-0 flex-shrink-0">
             <Sidebar
               user={user}
               activeSection={section}
@@ -157,7 +157,7 @@ function SignedInApplication({
       )}
 
       {/* Main area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
         {/* Mobile top bar */}
         <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#1e3a5f] text-white shrink-0">
           <button
@@ -177,7 +177,7 @@ function SignedInApplication({
         <DevelopmentScenarioSelector />
 
         {/* Scrollable page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="relative flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-y-contain">
           {renderContent()}
         </main>
       </div>
