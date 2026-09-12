@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useMemo, useRef, useState } from "react"
 import type { Role } from "../App"
 import { isCommunityRole } from "../services/rolePresentation"
 import { useCommunity } from "../context/CommunityContext"
@@ -17,9 +17,10 @@ import {
   type SupportRequestStatus,
 } from "../services/supportNetwork"
 import { IconAlertTriangle, IconCheckCircle, IconClock, IconX } from "./Icons"
+const SupportRequestsView = lazy(() => import('./SupportRequestsView'))
 
 export default function SupportNetwork({ role }: { role: Role }) {
-  if (!isCommunityRole(role)) return null
+  if (!isCommunityRole(role)) return <Suspense fallback={<p className="p-6">Loading support requests…</p>}><SupportRequestsView role={role} /></Suspense>
   return <CommunitySupportNetwork />
 }
 
@@ -31,6 +32,8 @@ function CommunitySupportNetwork() {
   const [selectedCategories, setSelectedCategories] =
     useState<AssistanceCategory[]>([])
   const [note, setNote] = useState("")
+  const [people, setPeople] = useState({ total: '', children: '0', elderly: '0', disabled: '0' })
+  const [location, setLocation] = useState({ latitude: '', longitude: '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSubmittedId, setLastSubmittedId] = useState<string | null>(null)
@@ -49,6 +52,8 @@ function CommunitySupportNetwork() {
     setDraft(buildSupportRequestDraft(community, plan))
     setSelectedCategories([])
     setNote("")
+    setPeople({ total: '', children: '0', elderly: '0', disabled: '0' })
+    setLocation({ latitude: String(community.latitude ?? ''), longitude: String(community.longitude ?? '') })
     setError(null)
     setSubmitting(false)
     submissionLocked.current = false
@@ -75,8 +80,11 @@ function CommunitySupportNetwork() {
     setSubmitting(true)
     setError(null)
     try {
+      if (!people.total.trim() || !location.latitude.trim() || !location.longitude.trim()) throw new Error('Enter the number of people and both coordinates.')
       const request = submit({
         ...draft,
+        assistancePeople: { total: Number(people.total), children: Number(people.children), elderly: Number(people.elderly), disabled: Number(people.disabled) },
+        requestLocation: { latitude: Number(location.latitude), longitude: Number(location.longitude) },
         assistanceCategories: selectedCategories,
         note,
       })
@@ -172,7 +180,7 @@ function CommunitySupportNetwork() {
           aria-expanded={draft !== null}
           className="mt-5 min-h-11 rounded-xl bg-[#1e3a5f] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#274b76] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
         >
-          Prepare Support Request
+          Request Support
         </button>
         <p className="mt-2 text-xs text-gray-500">
           Preparation never submits automatically, including when risk is high.
@@ -203,6 +211,21 @@ function CommunitySupportNetwork() {
               <IconX size={18} />
             </button>
           </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {(['total', 'children', 'elderly', 'disabled'] as const).map(key => (
+              <label key={key} className="text-sm font-medium text-gray-800">
+                {{ total: 'People needing help', children: 'Children needing help', elderly: 'Elderly needing help', disabled: 'People with disabilities needing help' }[key]}
+                <input aria-label={{ total: 'People needing help', children: 'Children needing help', elderly: 'Elderly needing help', disabled: 'People with disabilities needing help' }[key]} type="number" min={key === 'total' ? 1 : 0} step="1" value={people[key]} onChange={event => setPeople(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 p-2" />
+              </label>
+            ))}
+            {(['latitude', 'longitude'] as const).map(key => (
+              <label key={key} className="text-sm font-medium text-gray-800">Request {key}
+                <input aria-label={`Request ${key}`} type="number" step="any" min={key === 'latitude' ? -90 : -180} max={key === 'latitude' ? 90 : 180} value={location[key]} onChange={event => setLocation(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 p-2" />
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">Coordinates start from the selected community location; edit them for this request if needed. Counts describe people needing help, not the whole community. Vulnerable groups may overlap.</p>
 
           {draft.riskLevel === "HIGH" && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
@@ -290,7 +313,7 @@ function CommunitySupportNetwork() {
               generated by AI.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {ASSISTANCE_CATEGORIES.map((category) => (
+              {ASSISTANCE_CATEGORIES.filter(category => category !== 'Boats / Transport').map((category) => (
                 <label
                   key={category}
                   className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 hover:bg-gray-50"
@@ -365,7 +388,7 @@ function CommunitySupportNetwork() {
         <div className="mb-3 flex items-end justify-between gap-3">
           <div>
             <h2 className="font-bold text-gray-900">
-              This community’s demo requests
+              My Requests
             </h2>
             <p className="mt-0.5 text-xs text-gray-500">
               Newest first · stored only in this browser
@@ -391,6 +414,7 @@ function CommunitySupportNetwork() {
           </div>
         )}
       </section>
+      {lastSubmittedId && <p role="status" className="mt-3 text-sm text-green-800">Request saved locally. Track its response status in My Requests.</p>}
     </div>
   )
 }
@@ -441,6 +465,7 @@ function RequestCard({
       )}
 
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <SummaryRow label="People needing help" value={request.assistancePeople?.total.toLocaleString() ?? 'Not recorded (older request)'} />
         <SummaryRow
           label="Categories"
           value={request.assistanceCategories.join(", ") || "None selected"}

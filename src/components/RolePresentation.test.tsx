@@ -6,6 +6,7 @@ import SupportNetwork from './SupportNetwork'
 
 vi.mock('../context/CommunityContext', () => ({ useCommunity: () => ({ community: { name: 'Selected Community' } }) }))
 vi.mock('./GuardianLauncher', () => ({ default: () => null }))
+vi.mock('./SupportRequestsView', () => ({ default: () => <div>Read-only requests</div> }))
 
 describe('simulated role presentation boundaries', () => {
   it.each(['leader', 'mayor', 'assistant', 'ngo', 'government'] as const)('shows appropriate navigation for %s', async role => {
@@ -25,7 +26,8 @@ describe('simulated role presentation boundaries', () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
     let renderer!: ReturnType<typeof create>
     await act(async () => { renderer = create(<><CommunityInfo user={{ role, name: 'Test' }} /><SupportNetwork role={role} /></>) })
-    expect(renderer.toJSON()).toBeNull()
+    expect(JSON.stringify(renderer.toJSON())).toContain('Read-only requests')
+    expect(renderer.root.findAllByType('input')).toHaveLength(0)
     await act(async () => renderer.unmount())
   })
 })

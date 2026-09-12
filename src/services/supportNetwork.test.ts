@@ -15,6 +15,9 @@ import {
   transitionSupportRequest,
   type StorageLike,
   type SupportRequestCreationInput,
+  supportRequestStatusLabel,
+  supportRequestLocation,
+  SUPPORT_STATUS_COLORS,
 } from "./supportNetwork"
 
 class MemoryStorage implements StorageLike {
@@ -74,6 +77,34 @@ function creationInput(
 
 describe("Support Network local request store", () => {
   afterEach(() => vi.unstubAllGlobals())
+
+  it('persists request-specific people and coordinates independently of the community snapshot', () => {
+    const storage = new MemoryStorage()
+    const request = submitSupportRequest({ ...creationInput(), assistancePeople: { total: 12, children: 0, elderly: 3, disabled: 0 }, requestLocation: { latitude: 17, longitude: 96 } }, { storage })
+    const restored = loadSupportRequests(storage)[0]
+    expect(restored).toEqual(request)
+    expect(restored.community.population).toBe(community.population)
+    expect(restored.assistancePeople?.total).toBe(12)
+    expect(supportRequestLocation(restored)).toEqual({ latitude: 17, longitude: 96 })
+    for (const [status, label, color] of [['PENDING', 'New', '#dc2626'], ['ACCEPTED', 'Acknowledged', '#d97706'], ['IN_PROGRESS', 'In Progress', '#2563eb'], ['RESOLVED', 'Resolved', '#15803d']] as const) {
+      if (status !== 'PENDING') transitionSupportRequest(request.id, status, { storage })
+      const current = loadSupportRequests(storage)[0]
+      expect(current.status).toBe(status)
+      expect(supportRequestStatusLabel(current.status)).toBe(label)
+      expect(SUPPORT_STATUS_COLORS[current.status]).toBe(color)
+    }
+  })
+
+  it('rejects invalid request counts and coordinates, and reports persistence failure', () => {
+    expect(() => createSupportRequest({ ...creationInput(), assistancePeople: { total: 12, children: 0, elderly: 13, disabled: 0 } })).toThrow('positive whole number')
+    expect(() => createSupportRequest({ ...creationInput(), requestLocation: { latitude: 91, longitude: 95 } })).toThrow('valid latitude')
+    expect(() => submitSupportRequest(creationInput(), { storage: null })).toThrow('not saved')
+    const storage = { getItem: () => null, setItem: () => { throw new Error('Quota exceeded') } }
+    expect(() => submitSupportRequest(creationInput(), { storage })).toThrow('not saved')
+    const old = createSupportRequest(creationInput())
+    expect(parseSupportRequests(JSON.stringify([old]))[0].assistancePeople).toBeUndefined()
+    expect(supportRequestLocation(old)).toEqual({ latitude: community.latitude, longitude: community.longitude })
+  })
 
   it("recovers safely from malformed storage and drops unknown records", () => {
     expect(parseSupportRequests("{broken")).toEqual([])

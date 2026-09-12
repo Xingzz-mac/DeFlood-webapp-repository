@@ -177,7 +177,7 @@ describe("Support Network local demonstration workflow", () => {
 
     expect(submit).not.toHaveBeenCalled()
     await act(async () =>
-      buttonNamed(renderer!.root, "Prepare Support Request").props.onClick(),
+      buttonNamed(renderer!.root, "Request Support").props.onClick(),
     )
     const preparedText = pageText(renderer!.toJSON())
     expect(preparedText).toContain("High risk detected.")
@@ -194,6 +194,8 @@ describe("Support Network local demonstration workflow", () => {
     expect(submit).not.toHaveBeenCalled()
 
     const submitButton = buttonNamed(renderer!.root, "Submit Demo Request")
+    await act(async () => renderer!.root.findByProps({ 'aria-label': 'People needing help' }).props.onChange({ target: { value: '12' } }))
+    await act(async () => renderer!.root.findByProps({ 'aria-label': 'Elderly needing help' }).props.onChange({ target: { value: '3' } }))
     expect(submitButton.props.disabled).toBe(true)
     await act(async () =>
       renderer!.root.findByProps({ "aria-label": "Food" }).props.onChange(),
@@ -221,6 +223,8 @@ describe("Support Network local demonstration workflow", () => {
       ),
       assistanceCategories: ["Food"],
       note: "Need a local demo review.",
+      assistancePeople: { total: 12, children: 0, elderly: 3, disabled: 0 },
+      requestLocation: { latitude: 16.5, longitude: 95 },
     })
     await act(async () => renderer?.unmount())
   })

@@ -86,6 +86,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
                 >
                   View Risk Assessment
                 </button>
+                <button onClick={() => onNavigate('support')} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800">Request Support</button>
                 {risk.calculationStatus === 'COMPLETE' && risk.hazardLevel !== 'LOW' && (
                   <button
                     onClick={() => onNavigate('evacuation')}

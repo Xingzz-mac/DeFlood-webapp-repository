@@ -68,7 +68,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
               }`}
             >
               <Icon size={17} />
-              {id === 'dashboard' && !isCommunityRole(user.role) ? operationsLabel(user.role) : label}
+              {id === 'dashboard' && !isCommunityRole(user.role) ? operationsLabel(user.role) : id === 'support' && !isCommunityRole(user.role) ? 'Support Requests' : label}
             </button>
           )
         })}

@@ -118,11 +118,13 @@ describe('desktop Guardian web handoff', () => {
     await act(async () => renderer.root.findByProps({ 'data-sign-out': true }).props.onClick())
     await act(async () => renderer.root.findByProps({ 'data-sign-in-role': role }).props.onClick())
     expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
-    for (const section of ['community', 'support', 'evacuation']) {
+    for (const section of ['community', 'evacuation']) {
       await act(async () => renderer.root.findByProps({ 'data-navigate': section }).props.onClick())
       expect(renderer.root.findAllByProps({ 'data-view': section })).toHaveLength(0)
       expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
     }
+    await act(async () => renderer.root.findByProps({ 'data-navigate': 'support' }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-view': 'support' })).toBeDefined()
     await act(async () => renderer.unmount())
   })
 

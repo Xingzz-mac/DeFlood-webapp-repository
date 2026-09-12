@@ -125,13 +125,15 @@ function requestRow(request: SupportRequest): OperationsRow {
   }
 }
 
-export default function NGODashboard({ user }: NGODashboardProps) {
+export default function NGODashboard({ user, onNavigate }: NGODashboardProps) {
   const government = user.role === "government"
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
   const currentPlan = useEvacuationPlan()
   const scenario = useRiskScenarioOptional()
   const { requests, transition } = useSupportRequests()
+  const [transitionError, setTransitionError] = useState<string | null>(null)
+  const newCount = requests.filter(request => request.status === 'PENDING').length
   const [filter, setFilter] = useState<FilterType>("all")
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -248,6 +250,10 @@ export default function NGODashboard({ user }: NGODashboardProps) {
             : "NGO coordinator role"}
         </span>
       </header>
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <button type="button" className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white" onClick={() => onNavigate('support')}>Support Requests — List & Map</button>
+        <span className="text-sm text-gray-600">{newCount} new {newCount === 1 ? 'request' : 'requests'}</span>
+      </div>
 
       {government ? (
         <p className="mb-5 text-xs leading-relaxed text-gray-500">
@@ -327,8 +333,17 @@ export default function NGODashboard({ user }: NGODashboardProps) {
         </section>
 
         <aside className="min-w-0 lg:sticky lg:top-4">
+          {transitionError && <p role="alert" className="mb-3 text-sm text-red-700">{transitionError}</p>}
           {selected ? (
-            <OperationsDetails row={selected} transition={transition} government={government} />
+            <OperationsDetails row={selected} transition={(id, status) => {
+              try {
+                const updated = transition(id, status)
+                if (!updated) throw new Error('Request changed. Review its latest status.')
+                setTransitionError(null)
+              } catch (error) {
+                setTransitionError(error instanceof Error ? error.message : 'Status could not be saved.')
+              }
+            }} government={government} />
           ) : (
             <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-8 text-center">
               <IconUsers size={32} className="mx-auto mb-2 text-gray-300" />

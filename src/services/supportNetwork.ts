@@ -10,6 +10,7 @@ export const ASSISTANCE_CATEGORIES = [
   "Water",
   "Medical",
   "Boats / Transport",
+  "Evacuation / Transport",
   "Rescue",
   "Other",
 ] as const
@@ -55,6 +56,8 @@ export interface SupportRequestDraft {
 }
 
 export interface SupportRequest extends SupportRequestDraft {
+  assistancePeople?: { total: number; children: number; elderly: number; disabled: number }
+  requestLocation?: { latitude: number; longitude: number }
   id: string
   createdAt: string
   updatedAt: string
@@ -66,6 +69,8 @@ export interface SupportRequest extends SupportRequestDraft {
 }
 
 export interface SupportRequestCreationInput extends SupportRequestDraft {
+  assistancePeople?: SupportRequest['assistancePeople']
+  requestLocation?: SupportRequest['requestLocation']
   assistanceCategories: AssistanceCategory[]
   note?: string
 }
@@ -174,6 +179,8 @@ function parseStoredRequest(value: unknown): SupportRequest | null {
 
   return {
     id,
+    ...(validAssistancePeople(record.assistancePeople) ? { assistancePeople: record.assistancePeople } : {}),
+    ...(validRequestLocation(record.requestLocation) ? { requestLocation: record.requestLocation } : {}),
     createdAt,
     updatedAt: validIsoDate(record.updatedAt) ?? createdAt,
     community: {
@@ -298,16 +305,17 @@ export function loadSupportRequests(
 export function saveSupportRequests(
   requests: SupportRequest[],
   storage: StorageLike | null = currentStorage(),
-): void {
-  if (!storage) return
+): boolean {
+  if (!storage) return false
   const safeRequests = requests
     .map(parseStoredRequest)
     .filter((request): request is SupportRequest => request !== null)
   try {
     storage.setItem(SUPPORT_REQUESTS_STORAGE_KEY, JSON.stringify(safeRequests))
     notifyRequestListeners()
+    return true
   } catch {
-    // A local demonstration should remain usable if browser storage is unavailable.
+    return false
   }
 }
 
@@ -326,6 +334,12 @@ export function createSupportRequest(
   input: SupportRequestCreationInput,
   options: Pick<RequestOptions, "now" | "idFactory"> = {},
 ): SupportRequest {
+  if (input.assistancePeople !== undefined && !validAssistancePeople(input.assistancePeople)) {
+    throw new Error('Enter a positive whole number of people and valid vulnerable counts no greater than that number.')
+  }
+  if (input.requestLocation !== undefined && !validRequestLocation(input.requestLocation)) {
+    throw new Error('Enter valid latitude (-90 to 90) and longitude (-180 to 180).')
+  }
   const assistanceCategories = cleanCategories(input.assistanceCategories)
   if (assistanceCategories.length === 0) {
     throw new Error("Select at least one assistance category.")
@@ -353,7 +367,7 @@ export function submitSupportRequest(
   const storage =
     options.storage === undefined ? currentStorage() : options.storage
   const request = createSupportRequest(input, options)
-  saveSupportRequests([request, ...loadSupportRequests(storage)], storage)
+  if (!saveSupportRequests([request, ...loadSupportRequests(storage)], storage)) throw new Error('Local storage is unavailable or full. The request was not saved.')
   return request
 }
 
@@ -384,18 +398,44 @@ export function transitionSupportRequest(
     updatedAt: (options.now ?? (() => new Date()))().toISOString(),
     responderLabel: current.responderLabel ?? DEMO_RESPONDER_LABEL,
   }
-  saveSupportRequests(
+  const saved = saveSupportRequests(
     requests.map((request) => (request.id === id ? updated : request)),
     storage,
   )
+  if (!saved) throw new Error('Local storage is unavailable or full. The status was not saved.')
   return updated
 }
 
 export function supportRequestStatusLabel(
   status: SupportRequestStatus,
 ): string {
+  if (status === 'PENDING') return 'New'
+  if (status === 'ACCEPTED') return 'Acknowledged'
   if (status === "IN_PROGRESS") return "In Progress"
   return status.charAt(0) + status.slice(1).toLowerCase()
+}
+
+function validAssistancePeople(value: unknown): value is NonNullable<SupportRequest['assistancePeople']> {
+  if (!value || typeof value !== 'object') return false
+  const people = value as Record<string, unknown>
+  return Number.isSafeInteger(people.total) && (people.total as number) > 0 &&
+    ['children', 'elderly', 'disabled'].every(key => Number.isSafeInteger(people[key]) && (people[key] as number) >= 0 && (people[key] as number) <= (people.total as number))
+}
+
+function validRequestLocation(value: unknown): value is NonNullable<SupportRequest['requestLocation']> {
+  if (!value || typeof value !== 'object') return false
+  const location = value as Record<string, unknown>
+  return coordinate(location.latitude, -90, 90) !== null && coordinate(location.longitude, -180, 180) !== null
+}
+
+export const SUPPORT_STATUS_COLORS: Record<SupportRequestStatus, string> = {
+  PENDING: '#dc2626', ACCEPTED: '#d97706', IN_PROGRESS: '#2563eb', RESOLVED: '#15803d',
+}
+
+export function supportRequestLocation(request: SupportRequest): { latitude: number; longitude: number } | null {
+  if (request.requestLocation) return request.requestLocation
+  const { latitude, longitude } = request.community
+  return latitude === null || longitude === null ? null : { latitude, longitude }
 }
 
 export function supportRequestStatusMessage(request: SupportRequest): string {
