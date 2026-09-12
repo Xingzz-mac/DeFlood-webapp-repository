@@ -491,7 +491,7 @@ function OperationsDetails({
         <DetailSection title="Coordination Focus">
           <ListDetail
             label={row.plan ? "Existing eligible planning actions" : "Stored planning gaps"}
-            values={row.plan ? row.plan.allowedActions.map(action => action.text) : row.request?.planningGaps ?? []}
+            values={row.plan ? row.plan.allowedActions.filter(action => action.id !== "prepare-support-request").map(action => action.text) : row.request?.planningGaps ?? []}
             empty="No deterministic coordination focus recorded."
           />
         </DetailSection>
@@ -510,7 +510,7 @@ function OperationsDetails({
             {row.risk === "HIGH" && (
               <p className="mt-2 text-red-800">
                 High risk identified, but no support request has been sent.
-                Review needs and prepare manually if required.
+                Support activity will appear when a community submits a request.
               </p>
             )}
           </div>

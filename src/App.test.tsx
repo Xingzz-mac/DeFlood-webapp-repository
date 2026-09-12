@@ -3,13 +3,17 @@ import { readFileSync } from 'node:fs'
 import { act, create } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import type { Role, Section } from './App'
 import { PROTOTYPE_SESSION_STORAGE_KEY } from './services/prototypeSession'
 
 vi.mock('./components/SignIn', () => ({
-  default: ({ onSignIn }: { onSignIn: (user: { role: 'leader'; name: string }) => void }) => (
+  default: ({ onSignIn }: { onSignIn: (user: { role: Role; name: string }) => void }) => (
+    <>
     <button type="button" data-sign-in onClick={() => onSignIn({ role: 'leader', name: 'Demo leader' })}>
       Sign in
     </button>
+    {(['ngo', 'government'] as const).map(role => <button key={role} data-sign-in-role={role} onClick={() => onSignIn({ role, name: 'Responder' })}>{role}</button>)}
+    </>
   ),
 }))
 vi.mock('./components/EvacuationPlanner', () => ({
@@ -29,15 +33,18 @@ vi.mock('./components/EvacuationPlanner', () => ({
 }))
 vi.mock('./components/Dashboard', () => ({ default: () => <div data-view="dashboard" /> }))
 vi.mock('./components/Sidebar', () => ({
-  default: ({ onSignOut }: { onSignOut: () => void }) => (
+  default: ({ onSignOut, onNavigate }: { onSignOut: () => void; onNavigate: (section: Section) => void }) => (
+    <>
     <button type="button" data-sign-out onClick={onSignOut}>Sign out</button>
+    {(['community', 'support', 'evacuation'] as const).map(section => <button key={section} data-navigate={section} onClick={() => onNavigate(section)}>{section}</button>)}
+    </>
   ),
 }))
 vi.mock('./components/RiskAssessment', () => ({ default: () => null }))
 vi.mock('./components/FloodMap', () => ({ default: () => null }))
-vi.mock('./components/SupportNetwork', () => ({ default: () => null }))
-vi.mock('./components/NGODashboard', () => ({ default: () => null }))
-vi.mock('./components/CommunityInfo', () => ({ default: () => null }))
+vi.mock('./components/SupportNetwork', () => ({ default: () => <div data-view="support" /> }))
+vi.mock('./components/NGODashboard', () => ({ default: ({ user }: { user: { role: Role } }) => <div data-view={user.role} /> }))
+vi.mock('./components/CommunityInfo', () => ({ default: () => <div data-view="community" /> }))
 vi.mock('./components/Settings', () => ({ default: () => null }))
 vi.mock('./components/DevelopmentScenarioSelector', () => ({ default: () => null }))
 vi.mock('./components/Icons', () => ({ IconMenu: () => null }))
@@ -101,6 +108,30 @@ describe('desktop Guardian web handoff', () => {
       name: 'Demo leader',
     })
     expect(serialized).not.toMatch(/pin|password|secret|token|n8n|groq|worker/i)
+    await act(async () => renderer.unmount())
+  })
+
+  it.each(['ngo', 'government'] as const)('lands %s on operations after community sign-out and guards stale navigation', async role => {
+    const { renderer } = await signInAt('')
+    await act(async () => renderer.root.findByProps({ 'data-navigate': 'community' }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-view': 'community' })).toBeDefined()
+    await act(async () => renderer.root.findByProps({ 'data-sign-out': true }).props.onClick())
+    await act(async () => renderer.root.findByProps({ 'data-sign-in-role': role }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
+    for (const section of ['community', 'support', 'evacuation']) {
+      await act(async () => renderer.root.findByProps({ 'data-navigate': section }).props.onClick())
+      expect(renderer.root.findAllByProps({ 'data-view': section })).toHaveLength(0)
+      expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
+    }
+    await act(async () => renderer.unmount())
+  })
+
+  it.each(['ngo', 'government'] as const)('guards restored assistant page state for %s', async role => {
+    const storage = new MemoryStorage()
+    storage.setItem(PROTOTYPE_SESSION_STORAGE_KEY, JSON.stringify({ signedIn: true, role, name: 'Responder' }))
+    const { renderer } = await renderAt('?focus=assistant', storage)
+    expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
+    expect(renderer.root.findAllByProps({ 'data-view': 'evacuation' })).toHaveLength(0)
     await act(async () => renderer.unmount())
   })
 

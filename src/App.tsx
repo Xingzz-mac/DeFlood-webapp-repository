@@ -15,6 +15,7 @@ import { RiskProvider } from './context/RiskContext'
 import { EvacuationProvider } from './context/EvacuationContext'
 import { RiskScenarioProvider } from './context/RiskScenarioContext'
 import DevelopmentScenarioSelector from './components/DevelopmentScenarioSelector'
+import { isCommunityRole, roleSection } from './services/rolePresentation'
 import {
   consumeCurrentAssistantLaunchIntent,
   currentAppLaunchIntent,
@@ -100,20 +101,21 @@ function SignedInApplication({
   onAssistantFocusFulfilled: () => void
   onSignOut: () => void
 }) {
-  const isNGO = user.role === 'ngo' || user.role === 'government'
+  const isNGO = !isCommunityRole(user.role)
+  const accessibleSection = roleSection(user.role, section)
 
   const navigate = (nextSection: Section) => {
-    setSection(nextSection)
+    setSection(roleSection(user.role, nextSection))
     setMobileOpen(false)
   }
 
   const renderContent = () => {
-    if (isNGO && section === 'dashboard') {
+    if (isNGO && accessibleSection === 'dashboard') {
       return <NGODashboard user={user} onNavigate={navigate} />
     }
-    switch (section) {
+    switch (accessibleSection) {
       case 'dashboard': return <Dashboard user={user} onNavigate={navigate} />
-      case 'risk': return <RiskAssessment onNavigate={navigate} />
+      case 'risk': return <RiskAssessment onNavigate={navigate} role={user.role} />
       case 'evacuation': return (
         <EvacuationPlanner
           onNavigate={navigate}
@@ -122,7 +124,7 @@ function SignedInApplication({
         />
       )
       case 'map': return <FloodMap />
-      case 'support': return <SupportNetwork />
+      case 'support': return <SupportNetwork role={user.role} />
       case 'community': return <CommunityInfo user={user} />
       case 'settings': return <Settings user={user} onSignOut={onSignOut} />
       default: return <Dashboard user={user} onNavigate={navigate} />
@@ -135,7 +137,7 @@ function SignedInApplication({
       <div className="hidden h-full min-h-0 md:flex md:flex-shrink-0">
         <Sidebar
           user={user}
-          activeSection={section}
+          activeSection={accessibleSection}
           onNavigate={navigate}
           onSignOut={onSignOut}
         />
@@ -148,7 +150,7 @@ function SignedInApplication({
           <div className="relative z-50 h-full min-h-0 flex-shrink-0">
             <Sidebar
               user={user}
-              activeSection={section}
+              activeSection={accessibleSection}
               onNavigate={navigate}
               onSignOut={onSignOut}
             />

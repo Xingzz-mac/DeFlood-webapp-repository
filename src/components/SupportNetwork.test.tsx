@@ -118,7 +118,7 @@ describe("Support Network local demonstration workflow", () => {
     )
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
-      renderer = create(<SupportNetwork />)
+      renderer = create(<SupportNetwork role="leader" />)
     })
     const text = pageText(renderer!.toJSON())
 
@@ -141,7 +141,7 @@ describe("Support Network local demonstration workflow", () => {
     )
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
-      renderer = create(<SupportNetwork />)
+      renderer = create(<SupportNetwork role="leader" />)
     })
     const text = pageText(renderer!.toJSON())
 
@@ -172,7 +172,7 @@ describe("Support Network local demonstration workflow", () => {
     })
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
-      renderer = create(<SupportNetwork />)
+      renderer = create(<SupportNetwork role="leader" />)
     })
 
     expect(submit).not.toHaveBeenCalled()
@@ -254,7 +254,7 @@ describe("Support Network local demonstration workflow", () => {
     })
     let renderer: ReturnType<typeof create> | null = null
     await act(async () => {
-      renderer = create(<SupportNetwork />)
+      renderer = create(<SupportNetwork role="leader" />)
     })
     const text = pageText(renderer!.toJSON())
 

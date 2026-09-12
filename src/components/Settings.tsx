@@ -1,6 +1,7 @@
 import type { AppUser } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { IconLogOut } from './Icons'
+import { isCommunityRole } from '../services/rolePresentation'
 
 interface SettingsProps {
   user: AppUser
@@ -30,7 +31,7 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
           <div className="space-y-0">
             <Row label="Name" value={user.name} />
             <Row label="Role" value={roleLabels[user.role] || user.role} />
-            <Row label="Community" value={community.name} last />
+            {isCommunityRole(user.role) && <Row label="Community" value={community.name} last />}
           </div>
         </div>
 

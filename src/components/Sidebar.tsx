@@ -7,6 +7,7 @@ import {
   IconUsers, IconBuilding, IconSettings, IconLogOut,
 } from './Icons'
 import GuardianLauncher from './GuardianLauncher'
+import { canAccessSection, isCommunityRole, operationsLabel } from '../services/rolePresentation'
 
 interface SidebarProps {
   user: AppUser
@@ -27,7 +28,7 @@ const navItems: NavItem[] = [
   { id: 'evacuation', label: 'Evacuation Plan', Icon: IconTruck },
   { id: 'map', label: 'Map', Icon: IconMap },
   { id: 'support', label: 'Support Network', Icon: IconUsers },
-  { id: 'community', label: 'Community Info', Icon: IconBuilding },
+  { id: 'community', label: 'Community Information', Icon: IconBuilding },
   { id: 'settings', label: 'Settings', Icon: IconSettings },
 ]
 
@@ -54,7 +55,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
 
       {/* Nav */}
       <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-4 space-y-0.5">
-        {navItems.map(({ id, label, Icon }) => {
+        {navItems.filter(item => canAccessSection(user.role, item.id)).map(({ id, label, Icon }) => {
           const active = activeSection === id
           return (
             <button
@@ -67,7 +68,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
               }`}
             >
               <Icon size={17} />
-              {id === 'dashboard' && user.role === 'government' ? 'Regional Coordination' : label}
+              {id === 'dashboard' && !isCommunityRole(user.role) ? operationsLabel(user.role) : label}
             </button>
           )
         })}
@@ -79,7 +80,7 @@ export default function Sidebar({ user, activeSection, onNavigate, onSignOut }: 
         <div className="mb-3 px-1">
           <div className="text-sm font-semibold text-white leading-tight">{user.name}</div>
           <div className="text-xs text-blue-300 mt-0.5">{roleLabels[user.role] || user.role}</div>
-          <div className="text-xs text-blue-400 mt-0.5 truncate">{community.name}</div>
+          {isCommunityRole(user.role) && <div className="text-xs text-blue-400 mt-0.5 truncate">{community.name}</div>}
         </div>
         <button
           onClick={onSignOut}

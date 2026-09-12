@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from "react"
+import type { Role } from "../App"
+import { isCommunityRole } from "../services/rolePresentation"
 import { useCommunity } from "../context/CommunityContext"
 import { useEvacuationPlan } from "../context/EvacuationContext"
 import { useSupportRequests } from "../hooks/useSupportRequests"
@@ -16,7 +18,12 @@ import {
 } from "../services/supportNetwork"
 import { IconAlertTriangle, IconCheckCircle, IconClock, IconX } from "./Icons"
 
-export default function SupportNetwork() {
+export default function SupportNetwork({ role }: { role: Role }) {
+  if (!isCommunityRole(role)) return null
+  return <CommunitySupportNetwork />
+}
+
+function CommunitySupportNetwork() {
   const plan = useEvacuationPlan()
   const { community } = useCommunity()
   const { requests, submit } = useSupportRequests()

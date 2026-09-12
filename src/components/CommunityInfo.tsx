@@ -5,12 +5,18 @@ import { useCommunity, type CommunityData } from '../context/CommunityContext'
 import { GEO_TIMEOUT_MS } from '../services/config'
 import { isCurrentGpsRequestToken, nextGpsRequestToken } from '../utils/gpsRequestToken'
 import { IconBuilding, IconUsers, IconTruck, IconCheckCircle, IconMap, IconRefresh } from './Icons'
+import { isCommunityRole } from '../services/rolePresentation'
 
 interface CommunityInfoProps {
   user: AppUser
 }
 
-export default function CommunityInfo({ user: _user }: CommunityInfoProps) {
+export default function CommunityInfo({ user }: CommunityInfoProps) {
+  if (!isCommunityRole(user.role)) return null
+  return <CommunityEditor />
+}
+
+function CommunityEditor() {
   const { community, isSampleData, updateCommunity } = useCommunity()
   const [saved, setSaved] = useState(false)
   const [info, setInfo] = useState<CommunityData>(community)

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import type { Section } from '../App'
+import type { Role, Section } from '../App'
+import { isCommunityRole, operationsLabel } from '../services/rolePresentation'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
 import {
@@ -34,6 +35,7 @@ import RiverDischargeChart from './RiverDischargeChart'
 
 interface RiskAssessmentProps {
   onNavigate: (section: Section) => void
+  role?: Role
 }
 
 function fmtNumber(value: number | null, unit: string, digits = 1): string {
@@ -533,7 +535,7 @@ function DeterministicScoreExplanation({
   )
 }
 
-export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
+export default function RiskAssessment({ onNavigate, role = 'leader' }: RiskAssessmentProps) {
   const { community } = useCommunity()
   const risk = useRisk()
   const demoActive = risk.assessmentProvenance === 'DEMO'
@@ -648,10 +650,10 @@ export default function RiskAssessment({ onNavigate }: RiskAssessmentProps) {
             {risk.calculationStatus === 'COMPLETE' && risk.hazardLevel !== 'LOW' && (
               <button
                 type="button"
-                onClick={() => onNavigate('evacuation')}
+                onClick={() => onNavigate(isCommunityRole(role) ? 'evacuation' : 'dashboard')}
                 className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2d5282]"
               >
-                Open Evacuation Planner
+                {isCommunityRole(role) ? 'Open Evacuation Planner' : operationsLabel(role)}
               </button>
             )}
             {!demoActive && (

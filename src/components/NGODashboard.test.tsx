@@ -321,7 +321,7 @@ describe("NGO / government local demo request dashboard", () => {
       section.findAllByType("h3").some(heading => instanceText(heading) === "Coordination Focus"),
     )!
     const highPlan = plans[1]
-    expect(focus.findAllByType("li").map(item => instanceText(item).replace(/^•\s*/, ""))).toEqual(highPlan.allowedActions.map(action => action.text))
+    expect(focus.findAllByType("li").map(item => instanceText(item).replace(/^•\s*/, ""))).toEqual(highPlan.allowedActions.filter(action => action.id !== "prepare-support-request").map(action => action.text))
     const highText = pageText(renderer!.toJSON())
     expect(highText).toContain("No support request has been submitted for this demonstration scenario.")
     expect(highText).toContain("Sample drinking water supply is critical.")
