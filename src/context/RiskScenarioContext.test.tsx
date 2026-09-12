@@ -155,7 +155,7 @@ describe('presentation risk scenarios', () => {
     await act(async () => {
       renderer = create(
         <RiskScenarioStateProvider liveRisk={live} demoEnabled={false}>
-          <DevelopmentScenarioSelector />
+          <DevelopmentScenarioSelector role="leader" />
           <Consumer />
         </RiskScenarioStateProvider>,
       )
@@ -181,7 +181,7 @@ describe('presentation risk scenarios', () => {
     await act(async () => {
       renderer = create(
         <RiskScenarioStateProvider liveRisk={liveRisk()} demoEnabled>
-          <DevelopmentScenarioSelector />
+          <DevelopmentScenarioSelector role="leader" />
           <Controller />
         </RiskScenarioStateProvider>,
       )

@@ -1,11 +1,13 @@
 import { useRiskScenario } from "../context/RiskScenarioContext"
+import type { Role } from '../App'
+import { isCommunityRole } from '../services/rolePresentation'
 import {
   DEMO_SCENARIO_BANNER,
   RISK_SCENARIO_OPTIONS,
   type RiskScenario,
 } from "../services/demoScenarios"
 
-export default function DevelopmentScenarioSelector() {
+export default function DevelopmentScenarioSelector({ role }: { role: Role }) {
   const scenario = useRiskScenario()
   if (!scenario.enabled) return null
 
@@ -18,8 +20,7 @@ export default function DevelopmentScenarioSelector() {
       }`}
     >
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2.5 text-sm">
-        <label
-          htmlFor="assessment-mode"
+        <span
           className={
             scenario.demoActive
               ? "font-semibold text-amber-950"
@@ -27,9 +28,10 @@ export default function DevelopmentScenarioSelector() {
           }
         >
           Assessment mode
-        </label>
-        <select
+        </span>
+        {isCommunityRole(role) ? <select
           id="assessment-mode"
+          aria-label="Assessment mode"
           value={scenario.activeScenario}
           onChange={(event) =>
             scenario.setScenario(event.target.value as RiskScenario)
@@ -45,7 +47,9 @@ export default function DevelopmentScenarioSelector() {
               {option.label}
             </option>
           ))}
-        </select>
+        </select> : <span className="font-semibold text-gray-900" aria-label="Read-only assessment mode">
+          {RISK_SCENARIO_OPTIONS.find(option => option.value === scenario.activeScenario)?.label} · Read-only
+        </span>}
         {scenario.demoActive && (
           <span
             role="status"

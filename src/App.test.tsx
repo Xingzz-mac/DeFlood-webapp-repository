@@ -111,13 +111,19 @@ describe('desktop Guardian web handoff', () => {
     await act(async () => renderer.unmount())
   })
 
-  it.each(['ngo', 'government'] as const)('lands %s on operations after community sign-out and guards stale navigation', async role => {
+  it.each([
+    ['ngo', 'community'], ['government', 'community'],
+    ['ngo', 'support'], ['government', 'support'],
+  ] as const)('lands %s on operations after signing out from %s and guards stale navigation', async (role, previousSection) => {
     const { renderer } = await signInAt('')
-    await act(async () => renderer.root.findByProps({ 'data-navigate': 'community' }).props.onClick())
-    expect(renderer.root.findByProps({ 'data-view': 'community' })).toBeDefined()
-    await act(async () => renderer.root.findByProps({ 'data-sign-out': true }).props.onClick())
+    await act(async () => renderer.root.findByProps({ 'data-navigate': previousSection }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-view': previousSection })).toBeDefined()
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Open menu' }).props.onClick())
+    expect(renderer.root.findAllByProps({ 'data-sign-out': true })).toHaveLength(2)
+    await act(async () => renderer.root.findAllByProps({ 'data-sign-out': true })[0].props.onClick())
     await act(async () => renderer.root.findByProps({ 'data-sign-in-role': role }).props.onClick())
     expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
+    expect(renderer.root.findAllByProps({ 'data-sign-out': true })).toHaveLength(1)
     for (const section of ['community', 'evacuation']) {
       await act(async () => renderer.root.findByProps({ 'data-navigate': section }).props.onClick())
       expect(renderer.root.findAllByProps({ 'data-view': section })).toHaveLength(0)

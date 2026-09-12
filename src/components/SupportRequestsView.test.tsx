@@ -34,6 +34,11 @@ describe('shared Support Requests list and map', () => {
   it('updates the same persisted request through the NGO UI, and presents it read-only to Government', async () => {
     const request = seed()
     let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<SupportRequestsView role="government" />) })
+    expect(JSON.stringify(renderer.toJSON())).toContain('Water rising near homes.')
+    expect(renderer.root.findAllByType('button').some(button => button.children.includes('Acknowledge'))).toBe(false)
+    expect(renderer.root.findAllByType('input')).toHaveLength(0)
+    await act(async () => renderer.unmount())
     await act(async () => { renderer = create(<SupportRequestsView role="ngo" />) })
     expect(JSON.stringify(renderer.toJSON())).toContain('Water rising near homes.')
     for (const [label, status] of [['Acknowledge','ACCEPTED'], ['Start Response','IN_PROGRESS'], ['Resolve','RESOLVED']]) {

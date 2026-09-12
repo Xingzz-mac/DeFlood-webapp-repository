@@ -44,12 +44,15 @@ export default function App() {
   const signIn = (nextUser: AppUser) => {
     persistPrototypeSession(nextUser)
     setUser(nextUser)
-    setSection(launchIntent.focusAssistant ? 'evacuation' : 'dashboard')
+    setSection(roleSection(nextUser.role, launchIntent.focusAssistant ? 'evacuation' : 'dashboard'))
+    setMobileOpen(false)
   }
 
   const signOut = () => {
     clearPrototypeSession()
     setUser(null)
+    setSection('dashboard')
+    setMobileOpen(false)
   }
 
   const assistantFocusFulfilled = () => {
@@ -176,7 +179,7 @@ function SignedInApplication({
           <div className="w-8" />
         </div>
 
-        <DevelopmentScenarioSelector />
+        <DevelopmentScenarioSelector role={user.role} />
 
         {/* Scrollable page content */}
         <main className="relative flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-y-contain">
