@@ -61,15 +61,11 @@ export default function App() {
     setLaunchIntent({ focusAssistant: false })
   }
 
-  if (!user) {
-    return <div className="relative h-full min-h-0 overflow-y-auto overscroll-y-contain"><SignIn onSignIn={signIn} /></div>
-  }
-
   return (
     <RiskProvider>
       <RiskScenarioProvider>
         <EvacuationProvider>
-          <SignedInApplication
+          {user ? <SignedInApplication
             user={user}
             section={section}
             mobileOpen={mobileOpen}
@@ -78,7 +74,7 @@ export default function App() {
             focusAssistant={launchIntent.focusAssistant}
             onAssistantFocusFulfilled={assistantFocusFulfilled}
             onSignOut={signOut}
-          />
+          /> : <div className="relative h-full min-h-0 overflow-y-auto overscroll-y-contain"><SignIn onSignIn={signIn} /></div>}
         </EvacuationProvider>
       </RiskScenarioProvider>
     </RiskProvider>

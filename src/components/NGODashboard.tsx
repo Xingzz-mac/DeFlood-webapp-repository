@@ -20,6 +20,7 @@ import {
   type SupportRequestStatus,
 } from "../services/supportNetwork"
 import RiskBadge from "./RiskBadge"
+import GovernmentAlerts from './GovernmentAlerts'
 import { IconClock, IconFilter, IconUsers } from "./Icons"
 
 interface NGODashboardProps {
@@ -250,6 +251,7 @@ export default function NGODashboard({ user, onNavigate }: NGODashboardProps) {
             : "NGO coordinator role"}
         </span>
       </header>
+      {government && <GovernmentAlerts role={user.role} candidates={rows} />}
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <button type="button" className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white" onClick={() => onNavigate('support')}>Support Requests — List & Map</button>
         <span className="text-sm text-gray-600">{newCount} new {newCount === 1 ? 'request' : 'requests'}</span>

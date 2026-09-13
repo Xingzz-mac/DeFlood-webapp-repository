@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import CommunityAlerts from './CommunityAlerts'
 import type { AppUser, Section } from '../App'
 import { useCommunity } from '../context/CommunityContext'
 import { useRisk } from '../context/RiskContext'
@@ -39,6 +40,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
 
   return (
     <div className="mx-auto max-w-5xl p-4 md:p-6">
+      <CommunityAlerts role={_user.role} community={community} onNavigate={onNavigate} />
       <div className="mb-5">
         <div className="text-xs font-bold uppercase tracking-[0.14em] text-blue-700">Current community assessment</div>
         <h1 className="text-xl font-bold text-gray-900 md:text-2xl">{community.name}</h1>

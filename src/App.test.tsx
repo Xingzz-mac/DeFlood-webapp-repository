@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { readFileSync } from 'node:fs'
 import { act, create } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -50,7 +51,10 @@ vi.mock('./components/DevelopmentScenarioSelector', () => ({ default: () => null
 vi.mock('./components/Icons', () => ({ IconMenu: () => null }))
 vi.mock('./context/RiskContext', () => ({ RiskProvider: ({ children }: { children: ReactNode }) => children }))
 vi.mock('./context/EvacuationContext', () => ({ EvacuationProvider: ({ children }: { children: ReactNode }) => children }))
-vi.mock('./context/RiskScenarioContext', () => ({ RiskScenarioProvider: ({ children }: { children: ReactNode }) => children }))
+vi.mock('./context/RiskScenarioContext', () => ({ RiskScenarioProvider: ({ children }: { children: ReactNode }) => {
+  const [scenario, setScenario] = useState('live')
+  return <><button data-scenario={scenario} onClick={() => setScenario('demo-high')}>Choose demo</button>{children}</>
+} }))
 
 class MemoryStorage {
   readonly values = new Map<string, string>()
@@ -116,6 +120,7 @@ describe('desktop Guardian web handoff', () => {
     ['ngo', 'support'], ['government', 'support'],
   ] as const)('lands %s on operations after signing out from %s and guards stale navigation', async (role, previousSection) => {
     const { renderer } = await signInAt('')
+    await act(async () => renderer.root.findByProps({ 'data-scenario': 'live' }).props.onClick())
     await act(async () => renderer.root.findByProps({ 'data-navigate': previousSection }).props.onClick())
     expect(renderer.root.findByProps({ 'data-view': previousSection })).toBeDefined()
     await act(async () => renderer.root.findByProps({ 'aria-label': 'Open menu' }).props.onClick())
@@ -123,6 +128,7 @@ describe('desktop Guardian web handoff', () => {
     await act(async () => renderer.root.findAllByProps({ 'data-sign-out': true })[0].props.onClick())
     await act(async () => renderer.root.findByProps({ 'data-sign-in-role': role }).props.onClick())
     expect(renderer.root.findByProps({ 'data-view': role })).toBeDefined()
+    expect(renderer.root.findByProps({ 'data-scenario': 'demo-high' })).toBeDefined()
     expect(renderer.root.findAllByProps({ 'data-sign-out': true })).toHaveLength(1)
     for (const section of ['community', 'evacuation']) {
       await act(async () => renderer.root.findByProps({ 'data-navigate': section }).props.onClick())

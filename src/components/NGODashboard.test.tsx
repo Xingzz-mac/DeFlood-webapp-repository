@@ -316,7 +316,7 @@ describe("NGO / government local demo request dashboard", () => {
     expect(listText.indexOf("Demo Riverside Community B")).toBeLessThan(listText.indexOf("Demo Township Community C"))
     expect(triage.findAllByType("button").filter(button => instanceText(button).includes("Locally Submitted Community"))).toHaveLength(1)
 
-    await act(async () => buttonNamed(renderer!.root, "Demo Delta Community A").props.onClick())
+    await act(async () => buttonNamed(triage, "Demo Delta Community A").props.onClick())
     const focus = renderer!.root.findAllByType("section").find(section =>
       section.findAllByType("h3").some(heading => instanceText(heading) === "Coordination Focus"),
     )!
