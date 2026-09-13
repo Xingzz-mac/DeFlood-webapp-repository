@@ -37,14 +37,14 @@ vi.mock('./components/Sidebar', () => ({
   default: ({ onSignOut, onNavigate }: { onSignOut: () => void; onNavigate: (section: Section) => void }) => (
     <>
     <button type="button" data-sign-out onClick={onSignOut}>Sign out</button>
-    {(['community', 'support', 'evacuation'] as const).map(section => <button key={section} data-navigate={section} onClick={() => onNavigate(section)}>{section}</button>)}
+    {(['community', 'support', 'evacuation', 'alerts'] as const).map(section => <button key={section} data-navigate={section} onClick={() => onNavigate(section)}>{section}</button>)}
     </>
   ),
 }))
 vi.mock('./components/RiskAssessment', () => ({ default: () => null }))
 vi.mock('./components/FloodMap', () => ({ default: () => null }))
 vi.mock('./components/SupportNetwork', () => ({ default: () => <div data-view="support" /> }))
-vi.mock('./components/NGODashboard', () => ({ default: ({ user }: { user: { role: Role } }) => <div data-view={user.role} /> }))
+vi.mock('./components/NGODashboard', () => ({ default: ({ user, view }: { user: { role: Role }; view?: string }) => <div data-view={view === 'alerts' ? 'alerts' : user.role} /> }))
 vi.mock('./components/CommunityInfo', () => ({ default: () => <div data-view="community" /> }))
 vi.mock('./components/Settings', () => ({ default: () => null }))
 vi.mock('./components/DevelopmentScenarioSelector', () => ({ default: () => null }))
@@ -137,6 +137,19 @@ describe('desktop Guardian web handoff', () => {
     }
     await act(async () => renderer.root.findByProps({ 'data-navigate': 'support' }).props.onClick())
     expect(renderer.root.findByProps({ 'data-view': 'support' })).toBeDefined()
+    await act(async () => renderer.unmount())
+  })
+
+  it.each(['leader', 'ngo', 'government'] as const)('guards direct Alerts navigation for %s and clears it on sign-out', async role => {
+    const storage = new MemoryStorage()
+    storage.setItem(PROTOTYPE_SESSION_STORAGE_KEY, JSON.stringify({ signedIn: true, role, name: 'Test' }))
+    const { renderer } = await renderAt('', storage)
+    await act(async () => renderer.root.findByProps({ 'data-navigate': 'alerts' }).props.onClick())
+    expect(renderer.root.findAllByProps({ 'data-view': 'alerts' })).toHaveLength(role === 'government' ? 1 : 0)
+    await act(async () => renderer.root.findByProps({ 'data-sign-out': true }).props.onClick())
+    await act(async () => renderer.root.findByProps({ 'data-sign-in': true }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-view': 'dashboard' })).toBeDefined()
+    expect(renderer.root.findAllByProps({ 'data-view': 'alerts' })).toHaveLength(0)
     await act(async () => renderer.unmount())
   })
 

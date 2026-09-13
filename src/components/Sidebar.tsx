@@ -4,7 +4,7 @@ import defloodShield from '../assets/branding/deflood-shield.png'
 import { useCommunity } from '../context/CommunityContext'
 import {
   IconDashboard, IconShield, IconTruck, IconMap,
-  IconUsers, IconBuilding, IconSettings, IconLogOut,
+  IconUsers, IconBuilding, IconSettings, IconLogOut, IconAlertTriangle,
 } from './Icons'
 import GuardianLauncher from './GuardianLauncher'
 import { canAccessSection, isCommunityRole, operationsLabel } from '../services/rolePresentation'
@@ -25,6 +25,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: IconDashboard },
   { id: 'risk', label: 'Risk Assessment', Icon: IconShield },
+  { id: 'alerts', label: 'Alerts', Icon: IconAlertTriangle },
   { id: 'evacuation', label: 'Evacuation Plan', Icon: IconTruck },
   { id: 'map', label: 'Map', Icon: IconMap },
   { id: 'support', label: 'Support Network', Icon: IconUsers },

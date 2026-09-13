@@ -7,6 +7,7 @@ export function isCommunityRole(role: PrototypeRole): boolean {
 
 // Presentation rules for simulated roles, not an authentication boundary.
 export function canAccessSection(role: PrototypeRole, section: Section): boolean {
+  if (section === 'alerts') return role === 'government'
   return isCommunityRole(role) || !['community', 'evacuation'].includes(section)
 }
 

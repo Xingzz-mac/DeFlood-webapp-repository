@@ -21,11 +21,13 @@ import {
 } from "../services/supportNetwork"
 import RiskBadge from "./RiskBadge"
 import GovernmentAlerts from './GovernmentAlerts'
+import { alertCommunityId } from '../services/governmentAlerts'
 import { IconClock, IconFilter, IconUsers } from "./Icons"
 
 interface NGODashboardProps {
   user: AppUser
   onNavigate: (section: Section) => void
+  view?: 'overview' | 'alerts'
 }
 
 type OperationsSource = "CURRENT" | "DEMO_SCENARIO" | "LOCAL_REQUEST"
@@ -126,7 +128,7 @@ function requestRow(request: SupportRequest): OperationsRow {
   }
 }
 
-export default function NGODashboard({ user, onNavigate }: NGODashboardProps) {
+export default function NGODashboard({ user, onNavigate, view = 'overview' }: NGODashboardProps) {
   const government = user.role === "government"
   const { community, isSampleData } = useCommunity()
   const risk = useRisk()
@@ -229,6 +231,10 @@ export default function NGODashboard({ user, onNavigate }: NGODashboardProps) {
     (request) => request.status === "IN_PROGRESS",
   ).length
 
+  // Both pages consume the same existing operations rows; no parallel risk model.
+  if (view === 'alerts') return government ? <GovernmentAlerts role={user.role} candidates={rows} /> : null
+  const alertHighCount = [...new Map(rows.map(row => [alertCommunityId(row.community), row])).values()].filter(row => row.risk === 'HIGH').length
+
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -251,7 +257,12 @@ export default function NGODashboard({ user, onNavigate }: NGODashboardProps) {
             : "NGO coordinator role"}
         </span>
       </header>
-      {government && <GovernmentAlerts role={user.role} candidates={rows} />}
+      {government && <section aria-label="Alert overview" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4">
+        <h2 className="font-bold text-[#1e3a5f]">Communities Requiring Attention</h2>
+        <p className="mt-1 text-sm font-semibold text-red-700">{alertHighCount} High-Risk {alertHighCount === 1 ? 'Community' : 'Communities'} Detected</p>
+        <p className="mt-1 text-sm text-gray-600">{alertHighCount ? 'DeFlood recommends reviewing a targeted alert.' : 'No HIGH-risk communities currently require alert review.'}</p>
+        <button type="button" onClick={() => onNavigate('alerts')} className="mt-3 font-semibold text-blue-800">Review in Alerts →</button>
+      </section>}
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <button type="button" className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white" onClick={() => onNavigate('support')}>Support Requests — List & Map</button>
         <span className="text-sm text-gray-600">{newCount} new {newCount === 1 ? 'request' : 'requests'}</span>

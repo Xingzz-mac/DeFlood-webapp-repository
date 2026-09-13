@@ -28,7 +28,7 @@ import {
 } from './services/prototypeSession'
 
 export type Role = PrototypeRole
-export type Section = 'dashboard' | 'risk' | 'evacuation' | 'map' | 'support' | 'community' | 'settings'
+export type Section = 'dashboard' | 'risk' | 'alerts' | 'evacuation' | 'map' | 'support' | 'community' | 'settings'
 
 export interface AppUser {
   role: Role
@@ -110,11 +110,12 @@ function SignedInApplication({
 
   const renderContent = () => {
     if (isNGO && accessibleSection === 'dashboard') {
-      return <NGODashboard user={user} onNavigate={navigate} />
+      return <NGODashboard key="operations" user={user} onNavigate={navigate} />
     }
     switch (accessibleSection) {
       case 'dashboard': return <Dashboard user={user} onNavigate={navigate} />
       case 'risk': return <RiskAssessment onNavigate={navigate} role={user.role} />
+      case 'alerts': return <NGODashboard key="alerts" user={user} onNavigate={navigate} view="alerts" />
       case 'evacuation': return (
         <EvacuationPlanner
           onNavigate={navigate}

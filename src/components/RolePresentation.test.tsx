@@ -32,6 +32,11 @@ describe('simulated role presentation boundaries', () => {
     expect(text.includes('Community Information')).toBe(community)
     expect(text.includes('Support Network')).toBe(community)
     expect(text.includes('Evacuation Plan')).toBe(community)
+    expect(text.includes('"Alerts"')).toBe(role === 'government')
+    if (role === 'government') {
+      const labels = renderer.root.findByType('nav').findAllByType('button').map(button => button.children.filter(child => typeof child === 'string').join(''))
+      expect(labels).toEqual(['Regional Coordination', 'Risk Assessment', 'Alerts', 'Map', 'Support Requests', 'Settings'])
+    }
     if (!community) expect(text).toContain(role === 'ngo' ? 'NGO Operations' : 'Regional Coordination')
     await act(async () => renderer.unmount())
   })

@@ -180,6 +180,29 @@ describe("NGO / government local demo request dashboard", () => {
     })
   })
 
+  it('keeps only an alert shortcut in the overview and opens the dedicated page with the same recommendations', async () => {
+    useSupportRequestsMock.mockReturnValue({ requests: [], transition })
+    const navigate = vi.fn()
+    let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<NGODashboard user={{ role: 'government', name: 'Test' }} onNavigate={navigate} />) })
+    const overview = renderer.root.findByProps({ 'aria-label': 'Alert overview' })
+    expect(instanceText(overview)).toContain('1 High-Risk Community Detected')
+    expect(renderer.root.findAllByType('textarea')).toHaveLength(0)
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Recent Alerts' })).toHaveLength(0)
+    await act(async () => overview.findByType('button').props.onClick())
+    expect(navigate).toHaveBeenCalledWith('alerts')
+    await act(async () => renderer.update(<NGODashboard user={{ role: 'government', name: 'Test' }} onNavigate={navigate} view="alerts" />))
+    expect(pageText(renderer.toJSON())).toContain('Government Alerts')
+    expect(pageText(renderer.toJSON())).toContain('1 High-Risk Community Detected')
+    expect(renderer.root.findAllByType('textarea')).toHaveLength(0)
+    await act(async () => buttonNamed(renderer.root, 'Review Alert for Demo Delta Community A').props.onClick())
+    expect(renderer.root.findAllByType('textarea')).toHaveLength(1)
+    await act(async () => renderer.update(<NGODashboard user={{ role: 'government', name: 'Test' }} onNavigate={navigate} />))
+    await act(async () => renderer.update(<NGODashboard user={{ role: 'government', name: 'Test' }} onNavigate={navigate} view="alerts" />))
+    expect(renderer.root.findAllByType('textarea')).toHaveLength(0)
+    await act(async () => renderer.unmount())
+  })
+
   it("shows locally submitted requests prominently with full snapshot details and disclaimer", async () => {
     useSupportRequestsMock.mockReturnValue({
       requests: [localRequest()],
