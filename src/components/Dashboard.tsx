@@ -51,7 +51,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
 
       {isSampleData && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Sample demo workspace</strong> — Ayeyarwady Delta Zone 3 is starter data until Community Information is reviewed and saved. Planning results use these sample inputs.
+          <strong>Sample workspace</strong> — Ayeyarwady Delta Zone 3 is starter data until Community Information is reviewed and saved. Planning results use these sample inputs.
         </div>
       )}
 
@@ -78,7 +78,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
                     ? 'Core rainfall evidence is unavailable; no flood assessment or hazard score is produced.'
                     : risk.hazardScore === null
                       ? 'Waiting for environmental evidence; missing evidence is never classified LOW.'
-                      : `Deterministic prototype hazard score: ${risk.hazardScore.toFixed(1)} / 100.`}
+                      : `Deterministic hazard score: ${risk.hazardScore.toFixed(1)} / 100.`}
               </p>
               <p className="mt-3 text-sm leading-relaxed text-gray-700">{riskMeaning(risk)}</p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -146,7 +146,7 @@ export default function Dashboard({ user: _user, onNavigate }: DashboardProps) {
           icon={<IconUsers size={18} />}
           label={isSampleData ? 'Sample Population' : 'Confirmed Population'}
           value={community.population.toLocaleString()}
-          sub={isSampleData ? 'Demo input — confirm in Community Information' : 'User-confirmed prototype input'}
+          sub={isSampleData ? 'Sample input — confirm in Community Information' : 'User-confirmed input'}
         />
         <StatCard
           icon={<IconTruck size={18} />}

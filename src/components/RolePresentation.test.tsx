@@ -15,7 +15,7 @@ describe('simulated role presentation boundaries', () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
     let renderer!: ReturnType<typeof create>
     await act(async () => { renderer = create(<CommunityInfo user={{ role: 'leader', name: 'Test' }} />) })
-    expect(JSON.stringify(renderer.toJSON())).toContain('Sample demo workspace')
+    expect(JSON.stringify(renderer.toJSON())).toContain('Sample workspace')
     const field = renderer.root.findAllByType('input').find(input => input.props.value === DEMO_OPERATIONS_COMMUNITIES[0].community.name)!
     await act(async () => field.props.onChange({ target: { value: 'Reviewed Community' } }))
     expect(updateCommunity).not.toHaveBeenCalled()

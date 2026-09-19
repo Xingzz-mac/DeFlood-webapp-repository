@@ -410,7 +410,7 @@ export function transitionSupportRequest(
 }
 
 export function archiveSupportRequest(id: string, role: PrototypeRole, options: Pick<RequestOptions, 'storage' | 'now'> = {}): SupportRequest | null {
-  if (role !== 'ngo') throw new Error('Only the simulated NGO role can archive resolved requests.')
+  if (role !== 'ngo') throw new Error('Only the NGO role can archive resolved requests.')
   const storage = options.storage === undefined ? currentStorage() : options.storage
   const requests = loadSupportRequests(storage)
   const current = requests.find(request => request.id === id)
@@ -454,12 +454,12 @@ export function supportRequestLocation(request: SupportRequest): { latitude: num
 }
 
 export function supportRequestStatusMessage(request: SupportRequest): string {
-  if (request.status === "PENDING") return "Awaiting demo responder action"
+  if (request.status === "PENDING") return "Awaiting response"
   if (request.status === "ACCEPTED")
     return `Accepted by ${request.responderLabel ?? DEMO_RESPONDER_LABEL}`
   if (request.status === "IN_PROGRESS")
-    return "Demo response marked in progress"
-  return "Demo request marked resolved"
+    return "Response in progress"
+  return "Request resolved"
 }
 
 export function requestBelongsToCommunity(

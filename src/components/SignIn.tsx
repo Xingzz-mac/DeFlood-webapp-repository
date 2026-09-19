@@ -41,7 +41,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
               alt="DeFlood.AI — AI for Flood Resilience"
               className="mx-auto h-auto w-full max-w-[290px] object-contain"
             />
-            <p className="mt-3 text-xs font-medium text-slate-500">Myanmar flood-risk and evacuation-planning prototype</p>
+            <p className="mt-3 text-xs font-medium text-slate-500">Myanmar flood-risk assessment and evacuation planning</p>
           </div>
           <h1 className="text-base font-semibold text-gray-900 mb-5">Community Access</h1>
 
@@ -50,7 +50,7 @@ export default function SignIn({ onSignIn }: SignInProps) {
               <div className="text-xs font-medium text-gray-500">Current community</div>
               <div className="mt-0.5 text-sm font-semibold text-gray-900">{community.name}</div>
               <div className="mt-0.5 text-xs text-gray-500">
-                Demo workspace starts with sample data. You can review and replace it after signing in.
+                The workspace starts with sample data. Review and replace it after signing in.
               </div>
             </div>
 
@@ -110,10 +110,6 @@ export default function SignIn({ onSignIn }: SignInProps) {
             </button>
           </form>
         </div>
-
-        <p className="text-blue-300 text-xs text-center mt-5">
-          Prototype access — roles are simulated for demonstration.
-        </p>
       </div>
     </div>
   )

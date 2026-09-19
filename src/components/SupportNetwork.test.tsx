@@ -126,7 +126,7 @@ describe("Support Network local demonstration workflow", () => {
     expect(text).toContain("Sample resource gaps")
     expect(text).toContain("Sample shelter capacity is short by 800 places.")
     expect(text).toContain("Sample food supply is limited.")
-    expect(text).toContain("Demonstration Support Network")
+    expect(text).not.toContain("Demonstration Support Network")
     expect(text).not.toMatch(/confirmed (?:planning|resource|shortfall|gap)/i)
     await act(async () => renderer?.unmount())
   })
@@ -182,7 +182,7 @@ describe("Support Network local demonstration workflow", () => {
     const preparedText = pageText(renderer!.toJSON())
     expect(preparedText).toContain("High risk detected.")
     expect(preparedText).toContain(
-      "current sample demonstration planning information",
+      "current sample planning information",
     )
     expect(preparedText).toContain("Planner-derived gaps")
     plan.resourceWarnings
@@ -193,7 +193,7 @@ describe("Support Network local demonstration workflow", () => {
       .forEach((warning) => expect(preparedText).toContain(warning))
     expect(submit).not.toHaveBeenCalled()
 
-    const submitButton = buttonNamed(renderer!.root, "Submit Demo Request")
+    const submitButton = buttonNamed(renderer!.root, "Submit Request")
     await act(async () => renderer!.root.findByProps({ 'aria-label': 'People needing help' }).props.onChange({ target: { value: '12' } }))
     await act(async () => renderer!.root.findByProps({ 'aria-label': 'Elderly needing help' }).props.onChange({ target: { value: '3' } }))
     expect(submitButton.props.disabled).toBe(true)
@@ -205,7 +205,7 @@ describe("Support Network local demonstration workflow", () => {
         .findByType("textarea")
         .props.onChange({ target: { value: "Need a local demo review." } }),
     )
-    const enabledSubmit = buttonNamed(renderer!.root, "Submit Demo Request")
+    const enabledSubmit = buttonNamed(renderer!.root, "Submit Request")
     expect(enabledSubmit.props.disabled).toBe(false)
     await act(async () => {
       enabledSubmit.props.onClick()
@@ -264,7 +264,7 @@ describe("Support Network local demonstration workflow", () => {
 
     expect(text).toContain("Accepted by Demo Response Team")
     expect(text).toContain("Responder: Demo Response Team")
-    expect(text).toContain(
+    expect(text).not.toContain(
       "not sent to real NGOs, governments, rescue teams, or emergency services",
     )
     await act(async () => renderer?.unmount())

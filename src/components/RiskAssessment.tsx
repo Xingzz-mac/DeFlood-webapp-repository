@@ -589,7 +589,7 @@ export default function RiskAssessment({ onNavigate, role = 'leader' }: RiskAsse
         <div className="flex items-start gap-3">
           <IconAlertTriangle size={19} className="mt-0.5 shrink-0 text-blue-700" />
           <div>
-            <div className="font-bold text-gray-900">Prototype decision-support heuristics</div>
+            <div className="font-bold text-gray-900">Decision-support heuristics</div>
             <p className="mt-1 text-sm leading-relaxed text-gray-600">
               Flood Hazard is a deterministic physical-hazard score. Data Confidence separately describes evidence completeness, consistency, and freshness—not flood probability. Thresholds require future regional calibration.
             </p>

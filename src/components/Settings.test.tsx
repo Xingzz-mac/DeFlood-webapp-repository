@@ -39,8 +39,10 @@ describe('Settings prototype truthfulness', () => {
     const text = pageText(renderer!.toJSON())
 
     expect(text).toContain(
-      'Flood Hazard and Data Confidence are calculated using the current DeFlood prototype risk engine. Thresholds are experimental and not operationally validated.',
+      'Flood Hazard and Data Confidence are calculated using the DeFlood risk engine. Thresholds are experimental and not operationally validated.',
     )
+    expect(text).toContain('About DeFlood')
+    expect(text).toContain('DeFlood.AI is currently presented as a prototype. External emergency-notification infrastructure is not connected in this version.')
     expect(text).not.toContain('No flood-risk calculation has been implemented yet.')
     expect(text).toContain('ECMWF AIFS, ECMWF IFS, NOAA GFS, and UKMO')
     await act(async () => renderer?.unmount())
@@ -59,7 +61,7 @@ describe('Settings prototype truthfulness', () => {
     const text = pageText(renderer!.toJSON())
     const toggles = renderer!.root.findAllByType('input')
 
-    expect(text).toContain('Future prototype feature — not currently active.')
+    expect(text).toContain('Not yet available.')
     expect(text).toContain('DeFlood does not issue official evacuation orders.')
     expect(toggles).toHaveLength(4)
     expect(toggles.every(toggle => toggle.props.disabled === true)).toBe(true)

@@ -26,7 +26,6 @@ export default function SupportRequestsView({ role }: { role: Role }) {
   return <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
     <header><h1 className="text-2xl font-bold text-gray-900">{role === 'government' ? 'Support-Request Activity' : 'Assistance Requests'}</h1>
       <p className="mt-1 text-sm text-gray-600">{role === 'government' ? 'Preparedness oversight across submitted community requests.' : 'Review community needs and coordinate your response.'}</p>
-      <p className="mt-2 text-xs text-gray-500">Local prototype — requests and status updates stay in this browser. No real organisation is contacted or dispatched.</p>
     </header>
     <section aria-label="Request overview" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[
@@ -50,7 +49,7 @@ export default function SupportRequestsView({ role }: { role: Role }) {
           {filtered.map(request => <button key={request.id} type="button" onClick={() => setSelectedId(request.id)} className={`block w-full rounded-xl border p-4 text-left ${request.id === selected?.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'}`}>
             <strong>{request.community.name}</strong><span className="ml-2 rounded px-2 py-1 text-xs font-bold text-white" style={{ background: SUPPORT_STATUS_COLORS[request.status] }}>{supportRequestStatusLabel(request.status)}</span>
             <p className="mt-2 text-sm">{request.assistanceCategories.join(', ')} · {request.assistancePeople?.total ?? 'Unrecorded'} people · {request.riskLevel ?? 'Unknown'} risk at submission</p>
-            <p className="mt-1 text-xs text-gray-500">{new Date(request.createdAt).toLocaleString()} · {request.dataProvenance} · Local Demo Request</p>
+            <p className="mt-1 text-xs text-gray-500">{new Date(request.createdAt).toLocaleString()} · {request.dataProvenance}</p>
           </button>)}
         </section>
         {selected && <section aria-label="Request details" className="min-w-0 space-y-3 rounded-xl border border-gray-200 bg-white p-5">
@@ -60,11 +59,11 @@ export default function SupportRequestsView({ role }: { role: Role }) {
           <p className="text-sm">{selected.community.township}, {selected.community.region} · {location ? `${location.latitude}, ${location.longitude}` : 'Location not recorded'}</p>
           <p className="text-sm">People needing help: {selected.assistancePeople?.total ?? 'Not recorded'} · Children: {selected.assistancePeople?.children ?? 'Not recorded'} · Elderly: {selected.assistancePeople?.elderly ?? 'Not recorded'} · Disabilities: {selected.assistancePeople?.disabled ?? 'Not recorded'}</p>
           <p className="text-xs text-gray-500">Vulnerable categories may overlap. Whole community population: {selected.community.population}.</p>
-          <p className="text-sm">Risk at submission: {selected.riskLevel ?? 'Unavailable'} · {selected.dataProvenance} · Local Demo Request</p>
+          <p className="text-sm">Risk at submission: {selected.riskLevel ?? 'Unavailable'} · {selected.dataProvenance}</p>
           <p className="text-sm">Submitted: {new Date(selected.createdAt).toLocaleString()}<br />Updated: {new Date(selected.updatedAt).toLocaleString()}</p>
           <p className="whitespace-pre-wrap break-words text-sm">{selected.note || 'No note supplied.'}</p>
           <h3 className="font-semibold">Recorded planning gaps</h3><ul className="space-y-1 text-sm">{selected.planningGaps.map(gap => <li key={gap}>{gap}</li>)}</ul>
-          <p className="text-sm">Responder status: {selected.responderLabel ? `${supportRequestStatusLabel(selected.status)} — simulated response` : 'Not acknowledged'}</p>
+          <p className="text-sm">Responder status: {selected.responderLabel ? `${supportRequestStatusLabel(selected.status)}` : 'Not acknowledged'}</p>
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
           {role === 'ngo' && selected.status === 'RESOLVED' && !selected.archivedAt && <>
             <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm" onClick={() => { setArchiveId(selected.id); setError(null) }}>Archive Request</button>

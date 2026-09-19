@@ -88,12 +88,12 @@ export default function EvacuationPlanner({
       </div>
 
       <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-        <strong>Prototype safety boundary:</strong> this planner does not issue mandatory evacuation orders, select routes, set departure times, or assume resource capacities.
+        <strong>Planning scope:</strong> this planner does not issue mandatory evacuation orders, select routes, set departure times, or assume resource capacities.
       </div>
 
       {isSampleData && (
         <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900">
-          <strong>Demo community data</strong> — planning results are derived from sample inputs. Confirm or edit Community Information before use.
+          <strong>Sample community data</strong> — planning results are derived from sample inputs. Confirm or edit Community Information before use.
         </div>
       )}
 

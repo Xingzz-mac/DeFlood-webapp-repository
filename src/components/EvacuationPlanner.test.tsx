@@ -187,7 +187,7 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
     })
 
     const sampleText = pageText(renderer!.toJSON())
-    expect(sampleText).toContain('Demo community data — planning results are derived from sample inputs.')
+    expect(sampleText).toContain('Sample community data — planning results are derived from sample inputs.')
     expect(sampleText).toContain('Sample-data shortage')
     expect(sampleText).toContain('Sample-data shelter shortfall')
     expect(sampleText).toContain('All app-validated sample-data planning actions')
@@ -202,7 +202,7 @@ describe('AI-assisted evacuation plan stale-response protection', () => {
     const confirmedText = pageText(renderer!.toJSON())
     expect(confirmedText).toContain('Confirmed shortage')
     expect(confirmedText).toContain('Confirmed shelter shortfall')
-    expect(confirmedText).not.toContain('Demo community data')
+    expect(confirmedText).not.toContain('Sample community data')
     expect(confirmedPlan.shelter).toEqual(samplePlan.shelter)
     expect(confirmedPlan.transport).toEqual(samplePlan.transport)
     expect(confirmedPlan.priorityGroups).toEqual(samplePlan.priorityGroups)

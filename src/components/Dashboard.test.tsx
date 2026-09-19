@@ -79,7 +79,7 @@ describe('Dashboard community-data provenance', () => {
     })
     const text = pageText(renderer!.toJSON())
 
-    expect(text).toContain('Sample demo workspace — Ayeyarwady Delta Zone 3 is starter data')
+    expect(text).toContain('Sample workspace — Ayeyarwady Delta Zone 3 is starter data')
     expect(text).toContain('Sample Population')
     expect(text).toContain('Sample resource count')
     expect(text).not.toContain('Saved Population')

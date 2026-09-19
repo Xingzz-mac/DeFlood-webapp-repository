@@ -96,7 +96,7 @@ function CommunitySupportNetwork() {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "The demo request could not be stored.",
+          : "The request could not be saved.",
       )
     }
   }
@@ -111,20 +111,6 @@ function CommunitySupportNetwork() {
           {sample ? "Sample planning gaps" : "Confirmed planning gaps"} from the
           deterministic evacuation planner
         </p>
-      </div>
-
-      <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-950">
-        <div className="flex items-start gap-3">
-          <IconAlertTriangle
-            size={18}
-            className="mt-0.5 shrink-0 text-amber-700"
-          />
-          <p>
-            <strong>Demonstration Support Network.</strong> Requests are stored
-            locally in this browser and are not sent to real NGOs, governments,
-            rescue teams, or emergency services.
-          </p>
-        </div>
       </div>
 
       <div
@@ -169,7 +155,7 @@ function CommunitySupportNetwork() {
         ) : (
           <p className="mt-4 text-sm text-gray-600">
             {sample
-              ? "No sample resource gap is currently derived from the demonstration data."
+              ? "No resource gap is currently derived from the sample inputs."
               : "No confirmed resource gap is currently derived from the supplied community information."}
           </p>
         )}
@@ -189,7 +175,7 @@ function CommunitySupportNetwork() {
 
       {draft && (
         <section
-          aria-label="Prepare demo support request"
+          aria-label="Prepare support request"
           className="mt-5 rounded-2xl border border-blue-200 bg-white p-5 shadow-sm md:p-6"
         >
           <div className="flex items-start justify-between gap-4">
@@ -232,7 +218,7 @@ function CommunitySupportNetwork() {
               <strong>High risk detected.</strong> DeFlood has prepared a
               support request using the current{" "}
               {draft.dataProvenance === "SAMPLE"
-                ? "sample demonstration"
+                ? "sample"
                 : "user-confirmed"}{" "}
               planning information. Review it before submitting.
             </div>
@@ -252,7 +238,7 @@ function CommunitySupportNetwork() {
                   }`}
                 >
                   {draft.dataProvenance === "SAMPLE"
-                    ? "Sample / demo inputs"
+                    ? "Sample inputs"
                     : "User-confirmed inputs"}
                 </span>
               </div>
@@ -338,7 +324,7 @@ function CommunitySupportNetwork() {
               onChange={(event) => setNote(event.target.value)}
               maxLength={500}
               rows={3}
-              placeholder="Add short local context for this demonstration request"
+              placeholder="Describe the assistance needed"
               className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm font-normal text-gray-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
             />
           </label>
@@ -351,10 +337,6 @@ function CommunitySupportNetwork() {
               {selectedCategories.length > 0
                 ? selectedCategories.join(", ")
                 : "No assistance category selected yet"}
-            </p>
-            <p className="mt-1 text-xs text-blue-800">
-              This creates one local browser record. It does not contact or
-              dispatch any organisation.
             </p>
           </div>
 
@@ -370,7 +352,7 @@ function CommunitySupportNetwork() {
               disabled={submitting || selectedCategories.length === 0}
               className="min-h-11 rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              {submitting ? "Storing Demo Request…" : "Submit Demo Request"}
+              {submitting ? "Saving Request…" : "Submit Request"}
             </button>
             <button
               type="button"
@@ -391,7 +373,7 @@ function CommunitySupportNetwork() {
               My Requests
             </h2>
             <p className="mt-0.5 text-xs text-gray-500">
-              Newest first · stored only in this browser
+              Newest first
             </p>
           </div>
           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
@@ -410,11 +392,11 @@ function CommunitySupportNetwork() {
           </div>
         ) : (
           <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-7 text-center text-sm text-gray-500">
-            No local demo requests have been submitted for this community.
+            No support requests have been submitted for this community.
           </div>
         )}
       </section>
-      {lastSubmittedId && <p role="status" className="mt-3 text-sm text-green-800">Request saved locally. Track its response status in My Requests.</p>}
+      {lastSubmittedId && <p role="status" className="mt-3 text-sm text-green-800">Request submitted. Track its response status in My Requests.</p>}
     </div>
   )
 }
@@ -435,7 +417,7 @@ function RequestCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-gray-900">Local Demo Request</h3>
+            <h3 className="font-semibold text-gray-900">Support Request</h3>
             <StatusPill status={request.status} />
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
               {request.dataProvenance === "SAMPLE"

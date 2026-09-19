@@ -242,15 +242,13 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.15em] text-blue-700">
-            {government ? "Government / Local Authority" : "Demo Operations View"}
+            {government ? "Government / Local Authority" : "NGO Operations"}
           </div>
           <h1 className="mt-1 text-xl font-bold text-gray-900 md:text-2xl">
             {government ? "Regional Coordination" : "NGO Assistance / Response"}
           </h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-600">
-            {government ? "Regional overview of flood risk, preparedness gaps, and support-request activity across communities." : <>Combines deterministic risk evidence, community preparedness, and
-            browser-local support requests for presentation triage. This is not
-            connected to real organisations or emergency services.</>}
+            {government ? "Regional overview of flood risk, preparedness gaps, and support-request activity across communities." : <>Review risk evidence, community preparedness, and support requests to coordinate assistance.</>}
           </p>
         </div>
         <span className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700">
@@ -270,16 +268,6 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
         <span className="text-sm text-gray-600">{newCount} new {newCount === 1 ? 'request' : 'requests'}</span>
       </div>
 
-      {government ? (
-        <p className="mb-5 text-xs leading-relaxed text-gray-500">
-          Prototype coordination view — demo communities and requests are not connected to real government or emergency systems.
-        </p>
-      ) : <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-950">
-        <strong>Demonstration only — not a connected response system.</strong>{" "}
-        No request on this page contacts an NGO, government body, rescue team,
-        field team, or emergency service.
-      </div>}
-
       <section
         aria-label={government ? "Regional summary" : "Operations summary"}
         className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4"
@@ -287,7 +275,7 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
         <SummaryStat label={government ? "High Risk Communities" : "High Risk"} value={highCount} color="red" />
         <SummaryStat label={government ? "Medium Risk Communities" : "Medium Risk"} value={mediumCount} color="orange" />
         <SummaryStat
-          label={government ? "Open Support Requests" : "Open Demo Requests"}
+          label="Open Support Requests"
           value={openRequestCount}
           color="gray"
         />
@@ -341,7 +329,7 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
               </div>
             ) : (
               <p className="p-8 text-center text-sm text-gray-500">
-                No demonstration records match this filter.
+                No records match this filter.
               </p>
             )}
           </div>
@@ -534,7 +522,7 @@ function OperationsDetails({
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-700">
             <strong>
               {row.source === "DEMO_SCENARIO"
-                ? "No support request has been submitted for this demonstration scenario."
+                ? "No support request has been submitted for this scenario."
                 : "No support request has been submitted for this assessment record."}
             </strong>
             {row.risk === "HIGH" && (
@@ -559,13 +547,9 @@ function OperationsDetails({
             </button>
           ) : (
             <div className="py-2 text-center text-sm font-semibold text-green-700">
-              Local demo request resolved
+              Request resolved
             </div>
           )}
-          <p className="mt-2 text-center text-[11px] leading-4 text-gray-500">
-            This changes browser-local demo status only. No responder is
-            dispatched.
-          </p>
         </div>
       )}
     </div>
@@ -703,7 +687,7 @@ function SourceBadge({ row }: { row: OperationsRow }) {
 function RequestBadge() {
   return (
     <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-blue-800">
-      Local Demo Request
+      Support Request
     </span>
   )
 }

@@ -203,7 +203,7 @@ describe("NGO / government local demo request dashboard", () => {
     await act(async () => renderer.unmount())
   })
 
-  it("shows locally submitted requests prominently with full snapshot details and disclaimer", async () => {
+  it("shows locally submitted requests prominently with full snapshot details", async () => {
     useSupportRequestsMock.mockReturnValue({
       requests: [localRequest()],
       transition,
@@ -221,20 +221,20 @@ describe("NGO / government local demo request dashboard", () => {
     })
     const text = pageText(renderer!.toJSON())
 
-    expect(text).toContain("Local Demo Request")
+    expect(text).toContain("Support Request")
     expect(text).toContain("NGO Assistance / Response")
     expect(text).not.toContain("Regional Coordination")
     expect(text).toContain("Locally Submitted Community")
     expect(text.indexOf("Locally Submitted Community")).toBeLessThan(
       text.indexOf("Demo Delta Community A"),
     )
-    expect(text).toMatch(/Open Demo Requests\s*1/)
+    expect(text).toMatch(/Open Support Requests\s*1/)
     expect(text).toMatch(/Demo Township\s*,\s*Demo Region/)
     expect(text).toContain("DSR-dashboard")
     expect(text).toContain("Shelter, Water")
     expect(text).toContain("Confirmed shelter capacity is short by 600 places.")
     expect(text).toContain("Local-only demonstration note.")
-    expect(text).toContain("not a connected response system")
+    expect(text).not.toContain("not a connected response system")
     expect(text).not.toMatch(/Red Cross|UNICEF|Save the Children/i)
     await act(async () => renderer?.unmount())
   })
@@ -295,7 +295,7 @@ describe("NGO / government local demo request dashboard", () => {
       refresh: vi.fn(),
     })
     await act(async () => renderer!.update(renderDashboard()))
-    expect(pageText(renderer!.toJSON())).toContain("Local demo request resolved")
+    expect(pageText(renderer!.toJSON())).toContain("Request resolved")
     expect(
       renderer!.root
         .findAllByType("button")
@@ -315,7 +315,7 @@ describe("NGO / government local demo request dashboard", () => {
     const text = pageText(renderer!.toJSON())
     expect(text).toContain("Regional Coordination")
     expect(text).not.toContain("NGO Assistance / Response")
-    expect(text).toContain("Prototype coordination view")
+    expect(text).not.toContain("Prototype coordination view")
     expect(text).toMatch(/High Risk Communities\s*2/)
     expect(text).toMatch(/Medium Risk Communities\s*2/)
     expect(text).toMatch(/Open Support Requests\s*2/)
@@ -346,7 +346,7 @@ describe("NGO / government local demo request dashboard", () => {
     const highPlan = plans[1]
     expect(focus.findAllByType("li").map(item => instanceText(item).replace(/^•\s*/, ""))).toEqual(highPlan.allowedActions.filter(action => action.id !== "prepare-support-request").map(action => action.text))
     const highText = pageText(renderer!.toJSON())
-    expect(highText).toContain("No support request has been submitted for this demonstration scenario.")
+    expect(highText).toContain("No support request has been submitted for this scenario.")
     expect(highText).toContain("Sample drinking water supply is critical.")
     expect(transition).not.toHaveBeenCalled()
     await act(async () => renderer?.unmount())
@@ -435,7 +435,7 @@ describe("NGO / government local demo request dashboard", () => {
     )
     const selectedText = pageText(renderer!.toJSON())
     expect(selectedText).toContain(
-      "No support request has been submitted for this demonstration scenario.",
+      "No support request has been submitted for this scenario.",
     )
     expect(selectedText).toContain(
       "High risk identified, but no support request has been sent.",

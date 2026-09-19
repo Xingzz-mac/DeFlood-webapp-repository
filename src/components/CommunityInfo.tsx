@@ -154,12 +154,12 @@ function CommunityEditor() {
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
       <div className="mb-5">
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Community Information</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Update community details used for source-data requests and planning prototypes</p>
+        <p className="text-gray-500 text-sm mt-0.5">Update community details used for risk assessment and planning</p>
       </div>
 
       {isSampleData && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Sample demo workspace</strong> — Ayeyarwady Delta Zone 3 is starter data only. Review or replace it, then save Community Information to mark the inputs as user-confirmed.
+          <strong>Sample workspace</strong> — Ayeyarwady Delta Zone 3 is starter data only. Review or replace it, then save Community Information to mark the inputs as user-confirmed.
         </div>
       )}
 

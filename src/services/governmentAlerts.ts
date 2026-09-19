@@ -32,7 +32,7 @@ export function loadGovernmentAlerts(): GovernmentAlert[] {
   } catch { return [] }
 }
 export function issueGovernmentAlert(role: PrototypeRole, draft: Pick<GovernmentAlert, 'type' | 'severity' | 'targets' | 'message'>): GovernmentAlert {
-  if (role !== 'government') throw new Error('Only the simulated Government role can issue alerts.')
+  if (role !== 'government') throw new Error('Only the Government role can issue alerts.')
   if (!ALERT_TYPES.includes(draft.type) || !ALERT_SEVERITIES.includes(draft.severity) || !draft.targets.length || draft.targets.some(t => !t.id || !t.name) || !draft.message.trim() || draft.message.length > 2000) throw new Error('Select recipients and enter a message of 1–2000 characters.')
   const alert: GovernmentAlert = { ...draft, targets: [...new Map(draft.targets.map(t => [t.id, { ...t }])).values()], message: draft.message.trim(), id: crypto.randomUUID(), issuedAt: new Date().toISOString(), status: 'ISSUED' }
   try { localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify([alert, ...loadGovernmentAlerts()])) } catch { throw new Error('Local storage is unavailable or full. Alert was not issued.') }

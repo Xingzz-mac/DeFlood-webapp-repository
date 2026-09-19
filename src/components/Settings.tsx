@@ -26,6 +26,10 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
       </div>
 
       <div className="space-y-4">
+        <section className="rounded-2xl border border-gray-200 bg-white p-5">
+          <h2 className="text-sm font-semibold text-gray-900">About DeFlood</h2>
+          <p className="mt-2 text-xs leading-relaxed text-gray-500">DeFlood.AI is currently presented as a prototype. External emergency-notification infrastructure is not connected in this version.</p>
+        </section>
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <h2 className="font-semibold text-gray-900 mb-4 text-sm">Account</h2>
           <div className="space-y-0">
@@ -37,7 +41,7 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5">
           <h2 className="font-semibold text-gray-900 text-sm">Notifications</h2>
-          <p className="mb-4 mt-1 text-xs text-gray-500">Future prototype feature — not currently active.</p>
+          <p className="mb-4 mt-1 text-xs text-gray-500">Not yet available.</p>
           <div className="space-y-3">
             {[
               'Risk-level change notifications',
@@ -63,7 +67,7 @@ export default function Settings({ user, onSignOut }: SettingsProps) {
           <h2 className="font-semibold text-gray-900 mb-3 text-sm">Data Sources</h2>
           <p className="text-sm text-gray-500 leading-relaxed mb-4">
             Environmental source data is requested for the current community coordinates.
-            Flood Hazard and Data Confidence are calculated using the current DeFlood prototype risk engine. Thresholds are experimental and not operationally validated.
+            Flood Hazard and Data Confidence are calculated using the DeFlood risk engine. Thresholds are experimental and not operationally validated.
           </p>
           <div className="space-y-1 text-xs text-gray-400">
             <div>Weather forecasts: Open-Meteo ECMWF AIFS, ECMWF IFS, NOAA GFS, and UKMO</div>
