@@ -1,6 +1,7 @@
 import type { CommunityData } from "../context/CommunityContext"
 import type { DataProvenance, EvacuationPlanResult } from "./evacuationTypes"
 import type { FloodHazardLevel } from "./riskTypes"
+import type { PrototypeRole } from './prototypeSession'
 
 export const SUPPORT_REQUESTS_STORAGE_KEY = "deflood-support-requests"
 export const DEMO_RESPONDER_LABEL = "Demo Response Team"
@@ -56,6 +57,7 @@ export interface SupportRequestDraft {
 }
 
 export interface SupportRequest extends SupportRequestDraft {
+  archivedAt?: string
   assistancePeople?: { total: number; children: number; elderly: number; disabled: number }
   requestLocation?: { latitude: number; longitude: number }
   id: string
@@ -179,6 +181,7 @@ function parseStoredRequest(value: unknown): SupportRequest | null {
 
   return {
     id,
+    ...(status === 'RESOLVED' && validIsoDate(record.archivedAt) ? { archivedAt: validIsoDate(record.archivedAt)! } : {}),
     ...(validAssistancePeople(record.assistancePeople) ? { assistancePeople: record.assistancePeople } : {}),
     ...(validRequestLocation(record.requestLocation) ? { requestLocation: record.requestLocation } : {}),
     createdAt,
@@ -389,7 +392,7 @@ export function transitionSupportRequest(
     options.storage === undefined ? currentStorage() : options.storage
   const requests = loadSupportRequests(storage)
   const current = requests.find((request) => request.id === id)
-  if (!current || nextSupportRequestStatus(current.status) !== nextStatus)
+  if (!current || current.archivedAt || nextSupportRequestStatus(current.status) !== nextStatus)
     return null
 
   const updated: SupportRequest = {
@@ -404,6 +407,18 @@ export function transitionSupportRequest(
   )
   if (!saved) throw new Error('Local storage is unavailable or full. The status was not saved.')
   return updated
+}
+
+export function archiveSupportRequest(id: string, role: PrototypeRole, options: Pick<RequestOptions, 'storage' | 'now'> = {}): SupportRequest | null {
+  if (role !== 'ngo') throw new Error('Only the simulated NGO role can archive resolved requests.')
+  const storage = options.storage === undefined ? currentStorage() : options.storage
+  const requests = loadSupportRequests(storage)
+  const current = requests.find(request => request.id === id)
+  if (!current || current.status !== 'RESOLVED' || current.archivedAt) return null
+  // Preserve updatedAt: for resolved records it records the final response update.
+  const archived = { ...current, archivedAt: (options.now ?? (() => new Date()))().toISOString() }
+  if (!saveSupportRequests(requests.map(request => request.id === id ? archived : request), storage)) throw new Error('Local storage is unavailable or full. The request was not archived.')
+  return archived
 }
 
 export function supportRequestStatusLabel(

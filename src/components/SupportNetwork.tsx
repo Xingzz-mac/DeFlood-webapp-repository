@@ -458,6 +458,7 @@ function RequestCard({
       <p className="mt-3 text-sm font-medium text-gray-800">
         {supportRequestStatusMessage(request)}
       </p>
+      {request.status === 'RESOLVED' && <p className="mt-1 text-xs text-green-800">Complete — no further response required.{request.archivedAt ? ` Archived ${formatDateTime(request.archivedAt)}; retained in history.` : ''}</p>}
       {request.responderLabel && (
         <p className="mt-1 text-xs text-gray-500">
           Responder: {request.responderLabel}

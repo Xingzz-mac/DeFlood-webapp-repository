@@ -14,9 +14,10 @@ function FitRequests({ points }: { points: [number, number][] }) {
   return null
 }
 
-export default function SupportRequestsMap({ requests, onOpen }: { requests: SupportRequest[]; onOpen: (id: string) => void }) {
+export default function SupportRequestsMap({ requests, onOpen, showResolved = false }: { requests: SupportRequest[]; onOpen: (id: string) => void; showResolved?: boolean }) {
+  const visible = requests.filter(request => !request.archivedAt && (request.status !== 'RESOLVED' || showResolved)).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
   const groups = new Map<string, { point: [number, number]; requests: SupportRequest[] }>()
-  for (const request of requests) {
+  for (const request of visible) {
     const location = supportRequestLocation(request)
     if (!location) continue
     const key = `${location.latitude},${location.longitude}`
@@ -31,12 +32,12 @@ export default function SupportRequestsMap({ requests, onOpen }: { requests: Sup
         <TileLayer attribution={OPENSTREETMAP_ATTRIBUTION} url={OPENSTREETMAP_TILE_URL} />
         <FitRequests points={[...groups.values()].map(group => group.point)} />
         {[...groups.entries()].map(([key, group]) => {
-          const newest = group.requests[0]
-          const label = `HELP ${group.requests.length > 1 ? group.requests.length : ''}`.trim()
+          const newest = group.requests.find(request => request.status !== 'RESOLVED') ?? group.requests[0]
+          const label = `${newest.status === 'RESOLVED' ? '✓ RESOLVED' : 'HELP'} ${group.requests.length > 1 ? group.requests.length : ''}`.trim()
           return <Marker key={key} position={group.point} title={`${label}: ${supportRequestStatusLabel(newest.status)}`} icon={divIcon({
             className: 'support-help-pin',
             html: `<div style="background:${SUPPORT_STATUS_COLORS[newest.status]};color:white;border:2px solid white;border-radius:6px;box-shadow:0 1px 5px #334155;font:bold 11px sans-serif;padding:6px 3px;text-align:center;opacity:${newest.status === 'RESOLVED' ? '.7' : '1'}">${label}</div>`,
-            iconSize: [52, 30], iconAnchor: [26, 30],
+            iconSize: [newest.status === 'RESOLVED' ? 100 : 52, 30], iconAnchor: [newest.status === 'RESOLVED' ? 50 : 26, 30],
           })}>
             <Popup><div className="max-h-72 space-y-3 overflow-y-auto">
               {group.requests.map(request => <div key={request.id} className="border-b pb-2">
@@ -54,8 +55,8 @@ export default function SupportRequestsMap({ requests, onOpen }: { requests: Sup
       </MapContainer>
     </div>
     <div className="flex flex-wrap gap-3 text-xs" aria-label="Help pin legend">
-      {(['PENDING', 'ACCEPTED', 'IN_PROGRESS', 'RESOLVED'] as const).map(status => <span key={status}><span style={{ background: SUPPORT_STATUS_COLORS[status] }} className="mr-1 inline-block rounded px-1.5 py-1 font-bold text-white">HELP</span>{supportRequestStatusLabel(status)}</span>)}
+      {(['PENDING', 'ACCEPTED', 'IN_PROGRESS', ...(showResolved ? ['RESOLVED' as const] : [])] as const).map(status => <span key={status}><span style={{ background: SUPPORT_STATUS_COLORS[status] }} className="mr-1 inline-block rounded px-1.5 py-1 font-bold text-white">{status === 'RESOLVED' ? '✓ RESOLVED' : 'HELP'}</span>{supportRequestStatusLabel(status)}</span>)}
     </div>
-    <p className="text-xs text-gray-500">HELP badges show request status, not flood hazard. Co-located requests share a badge showing the newest request’s status; open it to inspect every request. {requests.filter(request => !supportRequestLocation(request)).length} older requests have no valid location and remain in the list.</p>
+    <p className="text-xs text-gray-500">Only active requests appear by default. Select the Resolved status filter to show completed pins; archived requests are list-only history. HELP badges show request status, not flood hazard. Co-located requests share a badge prioritizing the newest active request; open it to inspect every visible request. {visible.filter(request => !supportRequestLocation(request)).length} requests have no valid location and remain in the list.</p>
   </section>
 }

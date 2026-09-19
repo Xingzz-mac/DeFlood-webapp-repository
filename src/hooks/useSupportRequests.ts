@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
+import type { PrototypeRole } from '../services/prototypeSession'
 import {
   loadSupportRequests,
   submitSupportRequest,
   subscribeSupportRequests,
   transitionSupportRequest,
+  archiveSupportRequest,
   type SupportRequestCreationInput,
   type SupportRequestStatus,
 } from "../services/supportNetwork"
@@ -32,5 +34,11 @@ export function useSupportRequests() {
     [refresh],
   )
 
-  return { requests, submit, transition, refresh }
+  const archive = useCallback((id: string, role: PrototypeRole) => {
+    const request = archiveSupportRequest(id, role)
+    refresh()
+    return request
+  }, [refresh])
+
+  return { requests, submit, transition, archive, refresh }
 }

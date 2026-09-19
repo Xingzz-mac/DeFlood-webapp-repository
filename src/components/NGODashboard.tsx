@@ -134,7 +134,9 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
   const risk = useRisk()
   const currentPlan = useEvacuationPlan()
   const scenario = useRiskScenarioOptional()
-  const { requests, transition } = useSupportRequests()
+  const { requests: storedRequests, transition } = useSupportRequests()
+  // Keep existing alert recommendation inputs unchanged; archived cases leave operations.
+  const requests = useMemo(() => view === 'alerts' ? storedRequests : storedRequests.filter(request => !request.archivedAt), [storedRequests, view])
   const [transitionError, setTransitionError] = useState<string | null>(null)
   const newCount = requests.filter(request => request.status === 'PENDING').length
   const [filter, setFilter] = useState<FilterType>("all")
