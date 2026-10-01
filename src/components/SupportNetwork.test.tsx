@@ -194,8 +194,10 @@ describe("Support Network local demonstration workflow", () => {
     expect(submit).not.toHaveBeenCalled()
 
     const submitButton = buttonNamed(renderer!.root, "Submit Request")
-    await act(async () => renderer!.root.findByProps({ 'aria-label': 'People needing help' }).props.onChange({ target: { value: '12' } }))
-    await act(async () => renderer!.root.findByProps({ 'aria-label': 'Elderly needing help' }).props.onChange({ target: { value: '3' } }))
+    await act(async () => renderer!.root.findByProps({ 'aria-label': 'Total people needing help' }).props.onChange({ target: { value: '12' } }))
+    await act(async () => renderer!.root.findByProps({ 'aria-label': 'Of those, children' }).props.onChange({ target: { value: '2' } }))
+    await act(async () => renderer!.root.findByProps({ 'aria-label': 'Of those, elderly people' }).props.onChange({ target: { value: '3' } }))
+    await act(async () => renderer!.root.findByProps({ 'aria-label': 'Of those, people with disabilities' }).props.onChange({ target: { value: '1' } }))
     expect(submitButton.props.disabled).toBe(true)
     await act(async () =>
       renderer!.root.findByProps({ "aria-label": "Food" }).props.onChange(),
@@ -223,10 +225,46 @@ describe("Support Network local demonstration workflow", () => {
       ),
       assistanceCategories: ["Food"],
       note: "Need a local demo review.",
-      assistancePeople: { total: 12, children: 0, elderly: 3, disabled: 0 },
+      assistancePeople: { total: 12, children: 2, elderly: 3, disabled: 1 },
       requestLocation: { latitude: 16.5, longitude: 95 },
     })
     await act(async () => renderer?.unmount())
+  })
+
+  it.each([
+    ['Of those, children', 'Children needing help'],
+    ['Of those, elderly people', 'Elderly people needing help'],
+    ['Of those, people with disabilities', 'People with disabilities needing help'],
+  ])('blocks invalid %s inline and re-enables submission after correction', async (label, errorLabel) => {
+    useEvacuationPlanMock.mockReturnValue(calculateEvacuationPlan(community, DEMO_RISK_FIXTURES['demo-high'], 'SAMPLE'))
+    const submit = vi.fn(input => createSupportRequest(input))
+    useSupportRequestsMock.mockReturnValue({ requests: [], submit })
+    let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<SupportNetwork role="leader" />) })
+    await act(async () => buttonNamed(renderer.root, 'Request Support').props.onClick())
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Food' }).props.onChange())
+    const change = async (name: string, value: string) => act(async () => renderer.root.findByProps({ 'aria-label': name }).props.onChange({ target: { value } }))
+    await change(label, '3')
+    for (const total of ['2', '0']) {
+      await change('Total people needing help', total)
+      expect(pageText(renderer.toJSON())).toContain(`${errorLabel} cannot exceed the total number of people needing help.`)
+      expect(renderer.root.findByProps({ 'aria-label': label }).props['aria-invalid']).toBe(true)
+      const button = buttonNamed(renderer.root, 'Submit Request')
+      expect(button.props.disabled).toBe(true)
+      await act(async () => button.props.onClick())
+      expect(submit).not.toHaveBeenCalled()
+    }
+    await change(label, '0')
+    expect(buttonNamed(renderer.root, 'Submit Request').props.disabled).toBe(false)
+    await change('Total people needing help', '3')
+    for (const name of ['Of those, children', 'Of those, elderly people', 'Of those, people with disabilities']) await change(name, '3')
+    expect(pageText(renderer.toJSON())).toContain('Vulnerable-group counts are included within the total and may overlap.')
+    expect(pageText(renderer.toJSON())).not.toContain('cannot exceed')
+    expect(buttonNamed(renderer.root, 'Submit Request').props.disabled).toBe(false)
+    await act(async () => buttonNamed(renderer.root, 'Submit Request').props.onClick())
+    expect(submit).toHaveBeenCalledOnce()
+    expect(submit.mock.calls[0][0].assistancePeople).toEqual({ total: 3, children: 3, elderly: 3, disabled: 3 })
+    await act(async () => renderer.unmount())
   })
 
   it("shows persisted responder status without implying a real dispatch", async () => {

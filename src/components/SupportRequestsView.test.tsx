@@ -21,7 +21,7 @@ vi.mock('react-leaflet', () => ({
 function seed() {
   const entry = DEMO_OPERATIONS_COMMUNITIES[0]
   const plan = calculateEvacuationPlan(entry.community, DEMO_SCENARIOS[entry.scenarioId].result, 'SAMPLE')
-  return submitSupportRequest({ ...buildSupportRequestDraft(entry.community, plan), assistanceCategories: ['Evacuation / Transport'], assistancePeople: { total: 12, children: 0, elderly: 3, disabled: 0 }, requestLocation: { latitude: 16.5, longitude: 95 }, note: 'Water rising near homes.' })
+  return submitSupportRequest({ ...buildSupportRequestDraft(entry.community, plan), assistanceCategories: ['Evacuation / Transport'], assistancePeople: { total: 12, children: 2, elderly: 3, disabled: 1 }, requestLocation: { latitude: 16.5, longitude: 95 }, note: 'Water rising near homes.' })
 }
 
 describe('shared Support Requests list and map', () => {
@@ -31,6 +31,23 @@ describe('shared Support Requests list and map', () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) })
   })
   afterEach(() => vi.unstubAllGlobals())
+
+  it.each(['ngo', 'government'] as const)('shows the inclusive total without adding subgroups for %s or the map', async role => {
+    seed()
+    let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<SupportRequestsView role={role} />) })
+    const overview = renderer.root.findByProps({ 'aria-label': 'Request overview' })
+    const countCard = overview.findAllByType('div').find(node => node.children.some(child => typeof child !== 'string' && child.children.includes('People Requesting Assistance')))!
+    expect(countCard.findByType('strong').children).toEqual(['12'])
+    const details = renderer.root.findByProps({ 'aria-label': 'Request details' })
+    expect(details.findAllByType('p').map(node => node.children.join('')).join(' ')).toContain('Total people needing help: 12 · Of those, children: 2 · Elderly people: 3 · People with disabilities: 1')
+    await act(async () => renderer.unmount())
+    await act(async () => { renderer = create(<SupportRequestsMap requests={loadSupportRequests()} onOpen={() => {}} />) })
+    const popupText = renderer.root.findAllByType('p').map(node => node.children.join('')).join(' ')
+    expect(popupText).toContain('Total people needing help: 12')
+    expect(popupText).not.toContain('Total people needing help: 18')
+    await act(async () => renderer.unmount())
+  })
 
   it('updates the same persisted request through the NGO UI, and presents it read-only to Government', async () => {
     const request = seed()

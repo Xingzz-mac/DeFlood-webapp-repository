@@ -57,8 +57,8 @@ export default function SupportRequestsView({ role }: { role: Role }) {
           <p>{selected.assistanceCategories.join(', ')} · <strong>{supportRequestStatusLabel(selected.status)}</strong></p>
           {selected.status === 'RESOLVED' && <p className="text-sm text-green-800">Complete — no further response required.{selected.archivedAt ? ` Archived: ${new Date(selected.archivedAt).toLocaleString()}. Read-only history.` : ''}</p>}
           <p className="text-sm">{selected.community.township}, {selected.community.region} · {location ? `${location.latitude}, ${location.longitude}` : 'Location not recorded'}</p>
-          <p className="text-sm">People needing help: {selected.assistancePeople?.total ?? 'Not recorded'} · Children: {selected.assistancePeople?.children ?? 'Not recorded'} · Elderly: {selected.assistancePeople?.elderly ?? 'Not recorded'} · Disabilities: {selected.assistancePeople?.disabled ?? 'Not recorded'}</p>
-          <p className="text-xs text-gray-500">Vulnerable categories may overlap. Whole community population: {selected.community.population}.</p>
+          <p className="text-sm">Total people needing help: {selected.assistancePeople?.total ?? 'Not recorded'} · Of those, children: {selected.assistancePeople?.children ?? 'Not recorded'} · Elderly people: {selected.assistancePeople?.elderly ?? 'Not recorded'} · People with disabilities: {selected.assistancePeople?.disabled ?? 'Not recorded'}</p>
+          <p className="text-xs text-gray-500">Vulnerable-group counts are included within the total and may overlap. Whole community population: {selected.community.population}.</p>
           <p className="text-sm">Risk at submission: {selected.riskLevel ?? 'Unavailable'} · {selected.dataProvenance}</p>
           <p className="text-sm">Submitted: {new Date(selected.createdAt).toLocaleString()}<br />Updated: {new Date(selected.updatedAt).toLocaleString()}</p>
           <p className="whitespace-pre-wrap break-words text-sm">{selected.note || 'No note supplied.'}</p>

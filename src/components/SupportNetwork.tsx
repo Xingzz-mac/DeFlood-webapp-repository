@@ -6,6 +6,7 @@ import { useEvacuationPlan } from "../context/EvacuationContext"
 import { useSupportRequests } from "../hooks/useSupportRequests"
 import {
   ASSISTANCE_CATEGORIES,
+  assistancePeopleErrors,
   buildSupportRequestDraft,
   planningGapsFromPlan,
   requestBelongsToCommunity,
@@ -18,6 +19,7 @@ import {
 } from "../services/supportNetwork"
 import { IconAlertTriangle, IconCheckCircle, IconClock, IconX } from "./Icons"
 const SupportRequestsView = lazy(() => import('./SupportRequestsView'))
+const PEOPLE_LABELS = { total: 'Total people needing help', children: 'Of those, children', elderly: 'Of those, elderly people', disabled: 'Of those, people with disabilities' }
 
 export default function SupportNetwork({ role }: { role: Role }) {
   if (!isCommunityRole(role)) return <Suspense fallback={<p className="p-6">Loading support requests…</p>}><SupportRequestsView role={role} /></Suspense>
@@ -33,6 +35,14 @@ function CommunitySupportNetwork() {
     useState<AssistanceCategory[]>([])
   const [note, setNote] = useState("")
   const [people, setPeople] = useState({ total: '', children: '0', elderly: '0', disabled: '0' })
+  const assistancePeople = {
+    total: people.total.trim() ? Number(people.total) : NaN,
+    children: people.children.trim() ? Number(people.children) : NaN,
+    elderly: people.elderly.trim() ? Number(people.elderly) : NaN,
+    disabled: people.disabled.trim() ? Number(people.disabled) : NaN,
+  }
+  const peopleErrors = assistancePeopleErrors(assistancePeople)
+  const invalidPeople = Object.keys(peopleErrors).length > 0
   const [location, setLocation] = useState({ latitude: '', longitude: '' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -74,7 +84,7 @@ function CommunitySupportNetwork() {
   }
 
   const submitRequest = () => {
-    if (!draft || submissionLocked.current || selectedCategories.length === 0)
+    if (!draft || submissionLocked.current || selectedCategories.length === 0 || invalidPeople)
       return
     submissionLocked.current = true
     setSubmitting(true)
@@ -83,7 +93,7 @@ function CommunitySupportNetwork() {
       if (!people.total.trim() || !location.latitude.trim() || !location.longitude.trim()) throw new Error('Enter the number of people and both coordinates.')
       const request = submit({
         ...draft,
-        assistancePeople: { total: Number(people.total), children: Number(people.children), elderly: Number(people.elderly), disabled: Number(people.disabled) },
+        assistancePeople,
         requestLocation: { latitude: Number(location.latitude), longitude: Number(location.longitude) },
         assistanceCategories: selectedCategories,
         note,
@@ -201,8 +211,9 @@ function CommunitySupportNetwork() {
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {(['total', 'children', 'elderly', 'disabled'] as const).map(key => (
               <label key={key} className="text-sm font-medium text-gray-800">
-                {{ total: 'People needing help', children: 'Children needing help', elderly: 'Elderly needing help', disabled: 'People with disabilities needing help' }[key]}
-                <input aria-label={{ total: 'People needing help', children: 'Children needing help', elderly: 'Elderly needing help', disabled: 'People with disabilities needing help' }[key]} type="number" min={key === 'total' ? 1 : 0} step="1" value={people[key]} onChange={event => setPeople(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 p-2" />
+                {PEOPLE_LABELS[key]}
+                <input aria-label={PEOPLE_LABELS[key]} aria-invalid={Boolean(peopleErrors[key])} aria-describedby={`assistance-counts-help${peopleErrors[key] ? ` assistance-${key}-error` : ''}`} type="number" min={0} step="1" value={people[key]} onChange={event => setPeople(current => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-gray-300 p-2" />
+                {peopleErrors[key] && <span id={`assistance-${key}-error`} className="mt-1 block text-xs text-red-700">{peopleErrors[key]}</span>}
               </label>
             ))}
             {(['latitude', 'longitude'] as const).map(key => (
@@ -211,7 +222,8 @@ function CommunitySupportNetwork() {
               </label>
             ))}
           </div>
-          <p className="mt-2 text-xs text-gray-500">Coordinates start from the selected community location; edit them for this request if needed. Counts describe people needing help, not the whole community. Vulnerable groups may overlap.</p>
+          <p id="assistance-counts-help" className="mt-2 text-xs text-gray-500">Vulnerable-group counts are included within the total and may overlap. For example, one person may be both elderly and have a disability.</p>
+          <p className="mt-1 text-xs text-gray-500">Counts describe people needing help, not the whole community. Coordinates start from the selected community location; edit them for this request if needed.</p>
 
           {draft.riskLevel === "HIGH" && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
@@ -349,7 +361,7 @@ function CommunitySupportNetwork() {
             <button
               type="button"
               onClick={submitRequest}
-              disabled={submitting || selectedCategories.length === 0}
+              disabled={submitting || selectedCategories.length === 0 || invalidPeople}
               className="min-h-11 rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
               {submitting ? "Saving Request…" : "Submit Request"}
@@ -448,7 +460,7 @@ function RequestCard({
       )}
 
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <SummaryRow label="People needing help" value={request.assistancePeople?.total.toLocaleString() ?? 'Not recorded (older request)'} />
+        <SummaryRow label="Total people needing help" value={request.assistancePeople?.total.toLocaleString() ?? 'Not recorded (older request)'} />
         <SummaryRow
           label="Categories"
           value={request.assistanceCategories.join(", ") || "None selected"}

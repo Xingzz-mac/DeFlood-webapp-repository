@@ -44,7 +44,8 @@ export default function SupportRequestsMap({ requests, onOpen, showResolved = fa
                 <strong>{request.community.name}</strong>
                 <p>{request.community.township}, {request.community.region} · {group.point.join(', ')}</p>
                 <p>{request.assistanceCategories.join(', ')} · {supportRequestStatusLabel(request.status)}</p>
-                <p>People: {request.assistancePeople?.total ?? 'Not recorded'} · Elderly: {request.assistancePeople?.elderly ?? 'Not recorded'} · Children: {request.assistancePeople?.children ?? 'Not recorded'} · Disabilities: {request.assistancePeople?.disabled ?? 'Not recorded'}</p>
+                <p>Total people needing help: {request.assistancePeople?.total ?? 'Not recorded'} · Of those, elderly people: {request.assistancePeople?.elderly ?? 'Not recorded'} · Children: {request.assistancePeople?.children ?? 'Not recorded'} · People with disabilities: {request.assistancePeople?.disabled ?? 'Not recorded'}</p>
+                <p>Vulnerable-group counts are included within the total and may overlap.</p>
                 <p>Risk at submission: {request.riskLevel ?? 'Unavailable'}</p>
                 <p>{request.note}</p>
                 <button type="button" className="font-semibold text-blue-700" onClick={() => onOpen(request.id)}>Open request</button>

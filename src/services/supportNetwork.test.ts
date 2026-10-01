@@ -96,7 +96,7 @@ describe("Support Network local request store", () => {
   })
 
   it('rejects invalid request counts and coordinates, and reports persistence failure', () => {
-    expect(() => createSupportRequest({ ...creationInput(), assistancePeople: { total: 12, children: 0, elderly: 13, disabled: 0 } })).toThrow('positive whole number')
+    expect(() => createSupportRequest({ ...creationInput(), assistancePeople: { total: 12, children: 0, elderly: 13, disabled: 0 } })).toThrow('Elderly people needing help cannot exceed the total')
     expect(() => createSupportRequest({ ...creationInput(), requestLocation: { latitude: 91, longitude: 95 } })).toThrow('valid latitude')
     expect(() => submitSupportRequest(creationInput(), { storage: null })).toThrow('not saved')
     const storage = { getItem: () => null, setItem: () => { throw new Error('Quota exceeded') } }
@@ -104,6 +104,33 @@ describe("Support Network local request store", () => {
     const old = createSupportRequest(creationInput())
     expect(parseSupportRequests(JSON.stringify([old]))[0].assistancePeople).toBeUndefined()
     expect(supportRequestLocation(old)).toEqual({ latitude: community.latitude, longitude: community.longitude })
+  })
+
+  it.each([
+    { total: 12, children: 2, elderly: 3, disabled: 1 },
+    { total: 3, children: 3, elderly: 3, disabled: 3 },
+    { total: 0, children: 0, elderly: 0, disabled: 0 },
+  ])('persists total and overlapping subsets unchanged: %j', assistancePeople => {
+    const storage = new MemoryStorage()
+    const request = submitSupportRequest({ ...creationInput(), assistancePeople }, { storage })
+    expect(request.assistancePeople).toEqual(assistancePeople)
+    expect(loadSupportRequests(storage)[0].assistancePeople).toEqual(assistancePeople)
+  })
+
+  it.each(['children', 'elderly', 'disabled'] as const)('blocks %s above the total, including a zero total', key => {
+    for (const total of [0, 2]) {
+      const storage = new MemoryStorage()
+      const assistancePeople = { total, children: 0, elderly: 0, disabled: 0, [key]: total + 1 }
+      expect(() => submitSupportRequest({ ...creationInput(), assistancePeople }, { storage })).toThrow('cannot exceed the total number of people needing help')
+      expect(loadSupportRequests(storage)).toEqual([])
+    }
+  })
+
+  it.each(['total', 'children', 'elderly', 'disabled'] as const)('requires nonnegative whole numbers for %s', key => {
+    for (const value of [-1, 1.5, NaN, Infinity]) {
+      const assistancePeople = { total: 12, children: 0, elderly: 0, disabled: 0, [key]: value }
+      expect(() => createSupportRequest({ ...creationInput(), assistancePeople })).toThrow('must be a whole number of 0 or more')
+    }
   })
 
   it("recovers safely from malformed storage and drops unknown records", () => {

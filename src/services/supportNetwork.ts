@@ -58,6 +58,7 @@ export interface SupportRequestDraft {
 
 export interface SupportRequest extends SupportRequestDraft {
   archivedAt?: string
+  // Total includes all people requiring assistance; subgroup counts are overlapping subsets.
   assistancePeople?: { total: number; children: number; elderly: number; disabled: number }
   requestLocation?: { latitude: number; longitude: number }
   id: string
@@ -338,7 +339,7 @@ export function createSupportRequest(
   options: Pick<RequestOptions, "now" | "idFactory"> = {},
 ): SupportRequest {
   if (input.assistancePeople !== undefined && !validAssistancePeople(input.assistancePeople)) {
-    throw new Error('Enter a positive whole number of people and valid vulnerable counts no greater than that number.')
+    throw new Error(Object.values(assistancePeopleErrors(input.assistancePeople))[0])
   }
   if (input.requestLocation !== undefined && !validRequestLocation(input.requestLocation)) {
     throw new Error('Enter valid latitude (-90 to 90) and longitude (-180 to 180).')
@@ -431,10 +432,22 @@ export function supportRequestStatusLabel(
 }
 
 function validAssistancePeople(value: unknown): value is NonNullable<SupportRequest['assistancePeople']> {
-  if (!value || typeof value !== 'object') return false
-  const people = value as Record<string, unknown>
-  return Number.isSafeInteger(people.total) && (people.total as number) > 0 &&
-    ['children', 'elderly', 'disabled'].every(key => Number.isSafeInteger(people[key]) && (people[key] as number) >= 0 && (people[key] as number) <= (people.total as number))
+  return Object.keys(assistancePeopleErrors(value)).length === 0
+}
+
+export function assistancePeopleErrors(value: unknown): Partial<Record<keyof NonNullable<SupportRequest['assistancePeople']>, string>> {
+  const people = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  const labels = { total: 'Total people needing help', children: 'Children needing help', elderly: 'Elderly people needing help', disabled: 'People with disabilities needing help' }
+  const errors: Partial<Record<keyof typeof labels, string>> = {}
+  for (const key of ['total', 'children', 'elderly', 'disabled'] as const) {
+    if (!Number.isSafeInteger(people[key]) || (people[key] as number) < 0) {
+      errors[key] = `${labels[key]} must be a whole number of 0 or more.`
+    } else if (key !== 'total' && !errors.total && (people[key] as number) > (people.total as number)) {
+      errors[key] = `${labels[key]} cannot exceed the total number of people needing help.`
+    }
+  }
+  // Never sum subgroups: one person can belong to multiple groups.
+  return errors
 }
 
 function validRequestLocation(value: unknown): value is NonNullable<SupportRequest['requestLocation']> {
