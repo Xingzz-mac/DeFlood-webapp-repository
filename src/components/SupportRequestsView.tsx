@@ -52,27 +52,45 @@ export default function SupportRequestsView({ role }: { role: Role }) {
             <p className="mt-1 text-xs text-gray-500">{new Date(request.createdAt).toLocaleString()} · {request.dataProvenance}</p>
           </button>)}
         </section>
-        {selected && <section aria-label="Request details" className="min-w-0 space-y-3 rounded-xl border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-bold">{selected.community.name}</h2><p className="break-all text-xs text-gray-500">{selected.id}</p>
-          <p>{selected.assistanceCategories.join(', ')} · <strong>{supportRequestStatusLabel(selected.status)}</strong></p>
-          {selected.status === 'RESOLVED' && <p className="text-sm text-green-800">Complete — no further response required.{selected.archivedAt ? ` Archived: ${new Date(selected.archivedAt).toLocaleString()}. Read-only history.` : ''}</p>}
-          <p className="text-sm">{selected.community.township}, {selected.community.region} · {location ? `${location.latitude}, ${location.longitude}` : 'Location not recorded'}</p>
-          <section aria-label="People needing assistance" className="space-y-2 text-sm">
-            <h3 className="font-semibold">People needing assistance</h3>
-            <p className="font-medium">Total: {selected.assistancePeople?.total ?? 'Not recorded'}</p>
-            <p>Of those:</p>
+        {selected && <section aria-label="Request details" className="min-w-0 space-y-5 rounded-xl border border-gray-200 bg-white p-5">
+          <header className="space-y-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <h2 className="min-w-0 break-words text-lg font-bold text-[#1e3a5f]">{selected.community.name}</h2>
+              <span className="shrink-0 rounded px-2 py-1 text-xs font-bold text-white" style={{ background: SUPPORT_STATUS_COLORS[selected.status] }}>{supportRequestStatusLabel(selected.status)}</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-900">{selected.assistanceCategories.join(', ')}</p>
+            <p className="text-sm text-gray-600">{selected.community.township}, {selected.community.region}</p>
+            <p className="text-sm text-gray-600">Risk at submission: <strong className="font-semibold text-gray-900">{selected.riskLevel ?? 'Unavailable'}</strong></p>
+          </header>
+          <section aria-label="People needing assistance" className="space-y-2 border-t border-gray-100 pt-4 text-sm">
+            <h3 className="font-semibold text-[#1e3a5f]">People needing assistance</h3>
+            <p className="text-lg font-bold tabular-nums text-gray-900">Total: {selected.assistancePeople?.total ?? 'Not recorded'}</p>
+            <p className="text-xs text-gray-500">Of those:</p>
             <dl className="space-y-1">
               {([['Children', 'children'], ['Elderly people', 'elderly'], ['People with disabilities', 'disabled']] as const).map(([label, key]) => (
-                <div key={key} className="flex flex-wrap justify-between gap-x-3"><dt>{label}</dt><dd>{selected.assistancePeople?.[key] ?? 'Not recorded'}</dd></div>
+                <div key={key} className="flex justify-between gap-3"><dt className="text-gray-600">{label}</dt><dd className="shrink-0 font-medium tabular-nums text-gray-900">{selected.assistancePeople?.[key] ?? 'Not recorded'}</dd></div>
               ))}
             </dl>
+            <small className="block text-xs leading-relaxed text-gray-500">Vulnerable-group counts are included within the total and may overlap.</small>
           </section>
-          <p className="text-xs text-gray-500">Vulnerable-group counts are included within the total and may overlap. Whole community population: {selected.community.population}.</p>
-          <p className="text-sm">Risk at submission: {selected.riskLevel ?? 'Unavailable'} · {selected.dataProvenance}</p>
-          <p className="text-sm">Submitted: {new Date(selected.createdAt).toLocaleString()}<br />Updated: {new Date(selected.updatedAt).toLocaleString()}</p>
-          <p className="whitespace-pre-wrap break-words text-sm">{selected.note || 'No note supplied.'}</p>
-          <h3 className="font-semibold">Recorded planning gaps</h3><ul className="space-y-1 text-sm">{selected.planningGaps.map(gap => <li key={gap}>{gap}</li>)}</ul>
-          <p className="text-sm">Responder status: {selected.responderLabel ? `${supportRequestStatusLabel(selected.status)}` : 'Not acknowledged'}</p>
+          <section className="space-y-2 border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-[#1e3a5f]">Request note</h3>
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{selected.note || 'No note supplied.'}</p>
+          </section>
+          <section className="space-y-2 border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-[#1e3a5f]">Recorded planning gaps</h3>
+            <ul className="list-disc space-y-1.5 pl-4 text-sm leading-relaxed text-gray-700">{selected.planningGaps.map(gap => <li key={gap}>{gap}</li>)}</ul>
+          </section>
+          <div className="space-y-1 border-t border-gray-100 pt-4 text-xs leading-relaxed text-gray-500">
+            <p className="break-all">Request ID: {selected.id}</p>
+            <p>Coordinates: {location ? `${location.latitude}, ${location.longitude}` : 'Location not recorded'}</p>
+            <p>Whole community population: {selected.community.population} · {selected.dataProvenance}</p>
+            <p>Submitted: {new Date(selected.createdAt).toLocaleString()}{selected.updatedAt !== selected.createdAt && <><br />Updated: {new Date(selected.updatedAt).toLocaleString()}</>}</p>
+          </div>
+          <section className="space-y-3 border-t border-gray-100 pt-4">
+          <h3 className="text-sm font-semibold text-[#1e3a5f]">Response</h3>
+          <p className="text-sm text-gray-600">Responder status: <span className="font-medium text-gray-900">{selected.responderLabel ? `${supportRequestStatusLabel(selected.status)}` : 'Not acknowledged'}</span></p>
+          {selected.status === 'RESOLVED' && <p className="text-sm text-green-800">Complete — no further response required.{selected.archivedAt ? ` Archived: ${new Date(selected.archivedAt).toLocaleString()}. Read-only history.` : ''}</p>}
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
           {role === 'ngo' && selected.status === 'RESOLVED' && !selected.archivedAt && <>
             <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm" onClick={() => { setArchiveId(selected.id); setError(null) }}>Archive Request</button>
@@ -83,6 +101,7 @@ export default function SupportRequestsView({ role }: { role: Role }) {
             </section>}
           </>}
           {role === 'ngo' && nextStatus && <button type="button" className="rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white" onClick={() => { try { const updated = transition(selected.id, nextStatus); if (!updated) throw new Error('Request changed. Review its latest status.'); setError(null) } catch (e) { setError(e instanceof Error ? e.message : 'Status could not be saved.') } }}>{selected.status === 'PENDING' ? 'Acknowledge' : selected.status === 'ACCEPTED' ? 'Start Response' : 'Resolve'}</button>}
+          </section>
         </section>}
       </div>}
   </div>
