@@ -222,7 +222,7 @@ function CommunitySupportNetwork() {
               </label>
             ))}
           </div>
-          <p id="assistance-counts-help" className="mt-2 text-xs text-gray-500">Vulnerable-group counts are included within the total and may overlap. For example, one person may be both elderly and have a disability.</p>
+          <p id="assistance-counts-help" className="mt-2 text-xs text-gray-500">Vulnerable-group counts are included within the total. Groups may overlap.</p>
           <p className="mt-1 text-xs text-gray-500">Counts describe people needing help, not the whole community. Coordinates start from the selected community location; edit them for this request if needed.</p>
 
           {draft.riskLevel === "HIGH" && (

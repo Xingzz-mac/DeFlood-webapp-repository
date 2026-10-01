@@ -258,7 +258,7 @@ describe("Support Network local demonstration workflow", () => {
     expect(buttonNamed(renderer.root, 'Submit Request').props.disabled).toBe(false)
     await change('Total people needing help', '3')
     for (const name of ['Of those, children', 'Of those, elderly people', 'Of those, people with disabilities']) await change(name, '3')
-    expect(pageText(renderer.toJSON())).toContain('Vulnerable-group counts are included within the total and may overlap.')
+    expect(pageText(renderer.toJSON())).toContain('Vulnerable-group counts are included within the total. Groups may overlap.')
     expect(pageText(renderer.toJSON())).not.toContain('cannot exceed')
     expect(buttonNamed(renderer.root, 'Submit Request').props.disabled).toBe(false)
     await act(async () => buttonNamed(renderer.root, 'Submit Request').props.onClick())
