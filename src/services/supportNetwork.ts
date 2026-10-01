@@ -2,6 +2,7 @@ import type { CommunityData } from "../context/CommunityContext"
 import type { DataProvenance, EvacuationPlanResult } from "./evacuationTypes"
 import type { FloodHazardLevel } from "./riskTypes"
 import type { PrototypeRole } from './prototypeSession'
+import { isCommunityRole } from './rolePresentation'
 
 export const SUPPORT_REQUESTS_STORAGE_KEY = "deflood-support-requests"
 export const DEMO_RESPONDER_LABEL = "Demo Response Team"
@@ -17,7 +18,7 @@ export const ASSISTANCE_CATEGORIES = [
 ] as const
 
 export type AssistanceCategory = typeof ASSISTANCE_CATEGORIES[number]
-export type SupportRequestStatus = "PENDING" | "ACCEPTED" | "IN_PROGRESS" | "RESOLVED"
+export type SupportRequestStatus = "PENDING" | "ACCEPTED" | "IN_PROGRESS" | "RESOLVED" | "CANCELLED"
 
 export interface SupportCommunitySnapshot {
   name: string
@@ -94,6 +95,7 @@ const validStatuses = new Set<SupportRequestStatus>([
   "ACCEPTED",
   "IN_PROGRESS",
   "RESOLVED",
+  "CANCELLED",
 ])
 const validCategories = new Set<AssistanceCategory>(ASSISTANCE_CATEGORIES)
 const requestListeners = new Set<() => void>()
@@ -225,6 +227,7 @@ function parseStoredRequest(value: unknown): SupportRequest | null {
     responderLabel:
       status === "PENDING"
         ? null
+        : status === "CANCELLED" ? cleanString(record.responderLabel, 120) || null
         : cleanString(record.responderLabel, 120) || DEMO_RESPONDER_LABEL,
     dataProvenance:
       record.dataProvenance === "USER_CONFIRMED" ? "USER_CONFIRMED" : "SAMPLE",
@@ -410,6 +413,26 @@ export function transitionSupportRequest(
   return updated
 }
 
+export function cancelSupportRequest(
+  id: string,
+  role: PrototypeRole,
+  community: Pick<CommunityData, 'name' | 'township' | 'region'>,
+  options: Pick<RequestOptions, 'storage' | 'now'> = {},
+): SupportRequest | null {
+  if (!isCommunityRole(role)) throw new Error('Only the Community can cancel its support requests.')
+  const storage = options.storage === undefined ? currentStorage() : options.storage
+  const requests = loadSupportRequests(storage)
+  const current = requests.find(request => request.id === id)
+  if (!current || !requestBelongsToCommunity(current, community) || !isActiveSupportRequest(current) || current.archivedAt) return null
+  const cancelled: SupportRequest = { ...current, status: 'CANCELLED', updatedAt: (options.now ?? (() => new Date()))().toISOString() }
+  if (!saveSupportRequests(requests.map(request => request.id === id ? cancelled : request), storage)) throw new Error('Local storage is unavailable or full. The request was not cancelled.')
+  return cancelled
+}
+
+export function isActiveSupportRequest(request: SupportRequest): boolean {
+  return request.status === 'PENDING' || request.status === 'ACCEPTED' || request.status === 'IN_PROGRESS'
+}
+
 export function archiveSupportRequest(id: string, role: PrototypeRole, options: Pick<RequestOptions, 'storage' | 'now'> = {}): SupportRequest | null {
   if (role !== 'ngo') throw new Error('Only the NGO role can archive resolved requests.')
   const storage = options.storage === undefined ? currentStorage() : options.storage
@@ -457,7 +480,7 @@ function validRequestLocation(value: unknown): value is NonNullable<SupportReque
 }
 
 export const SUPPORT_STATUS_COLORS: Record<SupportRequestStatus, string> = {
-  PENDING: '#dc2626', ACCEPTED: '#d97706', IN_PROGRESS: '#2563eb', RESOLVED: '#15803d',
+  PENDING: '#dc2626', ACCEPTED: '#d97706', IN_PROGRESS: '#2563eb', RESOLVED: '#15803d', CANCELLED: '#64748b',
 }
 
 export function supportRequestLocation(request: SupportRequest): { latitude: number; longitude: number } | null {
@@ -467,6 +490,7 @@ export function supportRequestLocation(request: SupportRequest): { latitude: num
 }
 
 export function supportRequestStatusMessage(request: SupportRequest): string {
+  if (request.status === 'CANCELLED') return 'Cancelled by Community'
   if (request.status === "PENDING") return "Awaiting response"
   if (request.status === "ACCEPTED")
     return `Accepted by ${request.responderLabel ?? DEMO_RESPONDER_LABEL}`

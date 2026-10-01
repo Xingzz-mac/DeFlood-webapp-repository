@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import type { Role } from '../App'
 import { useSupportRequests } from '../hooks/useSupportRequests'
-import { ASSISTANCE_CATEGORIES, nextSupportRequestStatus, supportRequestLocation, supportRequestStatusLabel, SUPPORT_STATUS_COLORS } from '../services/supportNetwork'
+import { ASSISTANCE_CATEGORIES, isActiveSupportRequest, nextSupportRequestStatus, supportRequestLocation, supportRequestStatusLabel, SUPPORT_STATUS_COLORS } from '../services/supportNetwork'
 
 const SupportRequestsMap = lazy(() => import('./SupportRequestsMap'))
 
@@ -29,7 +29,7 @@ export default function SupportRequestsView({ role }: { role: Role }) {
     </header>
     <section aria-label="Request overview" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[
-        ['Active Requests', requests.filter(r => r.status !== 'RESOLVED').length],
+        ['Active Requests', requests.filter(isActiveSupportRequest).length],
         ['High-Risk Requests', requests.filter(r => r.riskLevel === 'HIGH').length],
         ['People Requesting Assistance', knownPeople],
         ['Resolved Requests', requests.filter(r => r.status === 'RESOLVED').length],
@@ -37,7 +37,7 @@ export default function SupportRequestsView({ role }: { role: Role }) {
     </section>
     <p className="text-xs text-gray-500">{newCount} new {newCount === 1 ? 'request' : 'requests'}. People totals sum recorded request counts, including resolved requests; repeated requests may overlap. Older requests without a help count are excluded. Risk is the recorded assessment at submission.</p>
     <div className="flex flex-wrap gap-3">
-      <label className="text-sm">Status<select aria-label="Request status filter" value={status} onChange={e => { setStatus(e.target.value); setArchiveId(null) }} className="ml-2 rounded-lg border p-2"><option value="active">Active</option><option value="all">All unarchived</option>{(['PENDING','ACCEPTED','IN_PROGRESS','RESOLVED'] as const).map(s => <option key={s} value={s}>{supportRequestStatusLabel(s)}</option>)}<option value="archived">Archived / History</option></select></label>
+      <label className="text-sm">Status<select aria-label="Request status filter" value={status} onChange={e => { setStatus(e.target.value); setArchiveId(null) }} className="ml-2 rounded-lg border p-2"><option value="active">Active / Cancelled</option><option value="all">All unarchived</option>{(['PENDING','ACCEPTED','IN_PROGRESS','RESOLVED','CANCELLED'] as const).map(s => <option key={s} value={s}>{supportRequestStatusLabel(s)}</option>)}<option value="archived">Archived / History</option></select></label>
       <label className="text-sm">Assistance<select aria-label="Assistance filter" value={assistance} onChange={e => setAssistance(e.target.value)} className="ml-2 rounded-lg border p-2"><option value="all">All</option>{ASSISTANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label>
       <label className="text-sm">Risk<select aria-label="Risk filter" value={risk} onChange={e => setRisk(e.target.value)} className="ml-2 rounded-lg border p-2"><option value="all">All</option>{['HIGH','MEDIUM','LOW'].map(r => <option key={r}>{r}</option>)}</select></label>
     </div>
@@ -89,7 +89,7 @@ export default function SupportRequestsView({ role }: { role: Role }) {
           </div>
           <section className="space-y-3 border-t border-gray-100 pt-4">
           <h3 className="text-sm font-semibold text-[#1e3a5f]">Response</h3>
-          <p className="text-sm text-gray-600">Responder status: <span className="font-medium text-gray-900">{selected.responderLabel ? `${supportRequestStatusLabel(selected.status)}` : 'Not acknowledged'}</span></p>
+          <p className="text-sm text-gray-600">Responder status: <span className="font-medium text-gray-900">{selected.status === 'CANCELLED' ? 'Cancelled by Community' : selected.responderLabel ? `${supportRequestStatusLabel(selected.status)}` : 'Not acknowledged'}</span></p>
           {selected.status === 'RESOLVED' && <p className="text-sm text-green-800">Complete — no further response required.{selected.archivedAt ? ` Archived: ${new Date(selected.archivedAt).toLocaleString()}. Read-only history.` : ''}</p>}
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
           {role === 'ngo' && selected.status === 'RESOLVED' && !selected.archivedAt && <>

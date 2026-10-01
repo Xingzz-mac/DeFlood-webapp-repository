@@ -239,6 +239,19 @@ describe("NGO / government local demo request dashboard", () => {
     await act(async () => renderer?.unmount())
   })
 
+  it.each(['ngo', 'government'] as const)('keeps cancellation visible in the %s overview without response actions', async role => {
+    useSupportRequestsMock.mockReturnValue({ requests: [localRequest('CANCELLED')], transition })
+    let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<NGODashboard user={{ role, name: 'Coordinator' }} onNavigate={vi.fn()} />) })
+    await act(async () => buttonNamed(renderer.root, 'Locally Submitted Community').props.onClick())
+    const text = pageText(renderer.toJSON())
+    expect(text).toContain('Cancelled by Community')
+    expect(text).toMatch(/Open Support Requests\s*0/)
+    expect(text).not.toContain('Request resolved')
+    expect(renderer.root.findAllByType('button').some(button => /Accept Request|Start Response|Resolve/.test(instanceText(button)))).toBe(false)
+    await act(async () => renderer.unmount())
+  })
+
   it("offers only the next valid responder transition and refreshes selected request details", async () => {
     useSupportRequestsMock.mockReturnValue({
       requests: [localRequest("PENDING")],

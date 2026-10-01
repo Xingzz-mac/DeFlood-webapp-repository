@@ -13,6 +13,8 @@ import {
   planningGapsFromPlan,
   submitSupportRequest,
   transitionSupportRequest,
+  cancelSupportRequest,
+  nextSupportRequestStatus,
   type StorageLike,
   type SupportRequestCreationInput,
   supportRequestStatusLabel,
@@ -77,6 +79,38 @@ function creationInput(
 
 describe("Support Network local request store", () => {
   afterEach(() => vi.unstubAllGlobals())
+
+  it.each(['PENDING', 'ACCEPTED', 'IN_PROGRESS'] as const)('cancels an owned %s request without deleting it or allowing further response', status => {
+    const storage = new MemoryStorage()
+    const request = submitSupportRequest(creationInput(), { storage })
+    if (status !== 'PENDING') transitionSupportRequest(request.id, 'ACCEPTED', { storage })
+    if (status === 'IN_PROGRESS') transitionSupportRequest(request.id, 'IN_PROGRESS', { storage })
+    const before = loadSupportRequests(storage)[0]
+    const other = submitSupportRequest(creationInput(), { storage })
+    const updatedAt = '2026-10-01T12:00:00.000Z'
+    expect(cancelSupportRequest(request.id, 'leader', community, { storage, now: () => new Date(updatedAt) })).toEqual({ ...before, status: 'CANCELLED', updatedAt })
+    expect(loadSupportRequests(storage).find(r => r.id === request.id)).toEqual({ ...before, status: 'CANCELLED', updatedAt })
+    expect(loadSupportRequests(storage).find(r => r.id === other.id)).toEqual(other)
+    expect(nextSupportRequestStatus('CANCELLED')).toBeNull()
+    for (const next of ['ACCEPTED', 'IN_PROGRESS', 'RESOLVED'] as const) expect(transitionSupportRequest(request.id, next, { storage })).toBeNull()
+    expect(cancelSupportRequest(request.id, 'leader', community, { storage })).toBeNull()
+  })
+
+  it('restricts cancellation to the owning Community and rejects resolved requests', () => {
+    const storage = new MemoryStorage()
+    const request = submitSupportRequest(creationInput(), { storage })
+    for (const role of ['ngo', 'government'] as const) expect(() => cancelSupportRequest(request.id, role, community, { storage })).toThrow('Only the Community')
+    expect(cancelSupportRequest(request.id, 'leader', { ...community, name: 'Another community' }, { storage })).toBeNull()
+    expect(transitionSupportRequest(request.id, 'CANCELLED', { storage })).toBeNull()
+    expect(loadSupportRequests(storage)[0]).toEqual(request)
+    const failedStorage = { getItem: storage.getItem.bind(storage), setItem: () => { throw new Error('Full') } }
+    expect(() => cancelSupportRequest(request.id, 'leader', community, { storage: failedStorage })).toThrow('not cancelled')
+    expect(loadSupportRequests(storage)[0]).toEqual(request)
+    for (const next of ['ACCEPTED', 'IN_PROGRESS', 'RESOLVED'] as const) transitionSupportRequest(request.id, next, { storage })
+    const resolved = loadSupportRequests(storage)[0]
+    expect(cancelSupportRequest(request.id, 'leader', community, { storage })).toBeNull()
+    expect(loadSupportRequests(storage)[0]).toEqual(resolved)
+  })
 
   it('persists request-specific people and coordinates independently of the community snapshot', () => {
     const storage = new MemoryStorage()

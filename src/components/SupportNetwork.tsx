@@ -7,6 +7,7 @@ import { useSupportRequests } from "../hooks/useSupportRequests"
 import {
   ASSISTANCE_CATEGORIES,
   assistancePeopleErrors,
+  isActiveSupportRequest,
   buildSupportRequestDraft,
   planningGapsFromPlan,
   requestBelongsToCommunity,
@@ -23,13 +24,13 @@ const PEOPLE_LABELS = { total: 'Total people needing help', children: 'Of those,
 
 export default function SupportNetwork({ role }: { role: Role }) {
   if (!isCommunityRole(role)) return <Suspense fallback={<p className="p-6">Loading support requests…</p>}><SupportRequestsView role={role} /></Suspense>
-  return <CommunitySupportNetwork />
+  return <CommunitySupportNetwork role={role} />
 }
 
-function CommunitySupportNetwork() {
+function CommunitySupportNetwork({ role }: { role: Role }) {
   const plan = useEvacuationPlan()
   const { community } = useCommunity()
-  const { requests, submit } = useSupportRequests()
+  const { requests, submit, cancel } = useSupportRequests()
   const [draft, setDraft] = useState<SupportRequestDraft | null>(null)
   const [selectedCategories, setSelectedCategories] =
     useState<AssistanceCategory[]>([])
@@ -399,6 +400,9 @@ function CommunitySupportNetwork() {
                 key={request.id}
                 request={request}
                 highlighted={request.id === lastSubmittedId}
+                onCancel={() => {
+                  if (!cancel(request.id, role, community)) throw new Error('Request changed. Review its latest status.')
+                }}
               />
             ))}
           </div>
@@ -416,10 +420,14 @@ function CommunitySupportNetwork() {
 function RequestCard({
   request,
   highlighted,
+  onCancel,
 }: {
   request: SupportRequest
   highlighted: boolean
+  onCancel: () => void
 }) {
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   return (
     <article
       className={`rounded-2xl border bg-white p-5 ${
@@ -491,6 +499,20 @@ function RequestCard({
           <strong>Note:</strong> {request.note}
         </p>
       )}
+      {isActiveSupportRequest(request) && !request.archivedAt && (
+        <div className="mt-4">
+          {!confirmCancel ? <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700" onClick={() => { setConfirmCancel(true); setCancelError(null) }}>Cancel Request</button> : (
+            <section aria-label="Confirm cancellation" className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm">Cancel this support request? Responders will be able to see that it was cancelled.</p>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm" onClick={() => { setConfirmCancel(false); setCancelError(null) }}>Keep Request</button>
+                <button type="button" className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm text-white" onClick={() => { try { onCancel(); setConfirmCancel(false); setCancelError(null) } catch (e) { setCancelError(e instanceof Error ? e.message : 'Request could not be cancelled.') } }}>Cancel Request</button>
+              </div>
+            </section>
+          )}
+          {cancelError && <p role="alert" className="mt-2 text-sm text-red-700">{cancelError}</p>}
+        </div>
+      )}
     </article>
   )
 }
@@ -503,7 +525,7 @@ function StatusPill({ status }: { status: SupportRequestStatus }) {
         ? "bg-blue-50 text-blue-700"
         : status === "IN_PROGRESS"
           ? "bg-blue-100 text-blue-800"
-          : "bg-green-50 text-green-700"
+          : status === 'CANCELLED' ? 'bg-gray-100 text-gray-600' : "bg-green-50 text-green-700"
   return (
     <span className={`rounded px-2 py-0.5 text-xs font-semibold ${style}`}>
       {supportRequestStatusLabel(status)}

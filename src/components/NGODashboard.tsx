@@ -14,6 +14,7 @@ import type { EvacuationPlanResult } from "../services/evacuationTypes"
 import type { FloodHazardLevel } from "../services/riskTypes"
 import {
   nextSupportRequestStatus,
+  isActiveSupportRequest,
   requestBelongsToCommunity,
   supportRequestStatusLabel,
   type SupportRequest,
@@ -82,7 +83,7 @@ function vulnerableCount(row: OperationsRow): number {
 }
 
 function requestOrder(request: SupportRequest | null): number {
-  if (request && request.status !== "RESOLVED") return 0
+  if (request && isActiveSupportRequest(request)) return 0
   if (!request) return 1
   return 2
 }
@@ -213,7 +214,7 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
     if (filter === "gaps") return preparednessGaps(row).length > 0
     if (filter === "high") return row.risk === "HIGH"
     if (filter === "open")
-      return Boolean(row.request && row.request.status !== "RESOLVED")
+      return Boolean(row.request && isActiveSupportRequest(row.request))
     if (filter === "inprogress") return row.request?.status === "IN_PROGRESS"
     return true
   })
@@ -227,7 +228,7 @@ export default function NGODashboard({ user, onNavigate, view = 'overview' }: NG
   const highCount = rows.filter((row) => row.risk === "HIGH").length
   const mediumCount = rows.filter((row) => row.risk === "MEDIUM").length
   const openRequestCount = requests.filter(
-    (request) => request.status !== "RESOLVED",
+    isActiveSupportRequest,
   ).length
   const inProgressCount = requests.filter(
     (request) => request.status === "IN_PROGRESS",
@@ -546,8 +547,8 @@ function OperationsDetails({
               {actionLabel(row.request.status)}
             </button>
           ) : (
-            <div className="py-2 text-center text-sm font-semibold text-green-700">
-              Request resolved
+            <div className={`py-2 text-center text-sm font-semibold ${row.request.status === 'CANCELLED' ? 'text-gray-600' : 'text-green-700'}`}>
+              {row.request.status === 'CANCELLED' ? 'Cancelled by Community' : 'Request resolved'}
             </div>
           )}
         </div>
@@ -636,6 +637,7 @@ function RequestDetails({ request }: { request: SupportRequest }) {
         <span className="text-xs text-gray-500">Status</span>
         <StatusPill status={request.status} />
       </div>
+      {request.status === 'CANCELLED' && <p className="mb-2 text-sm text-gray-600">Cancelled by Community</p>}
       <DetailRow
         label="Categories"
         value={request.assistanceCategories.join(", ") || "None selected"}
@@ -790,7 +792,7 @@ function StatusPill({ status }: { status: SupportRequestStatus }) {
         ? "bg-blue-50 text-blue-700"
         : status === "IN_PROGRESS"
           ? "bg-blue-100 text-blue-800"
-          : "bg-green-50 text-green-700"
+          : status === 'CANCELLED' ? 'bg-gray-100 text-gray-600' : "bg-green-50 text-green-700"
   return (
     <span className={`rounded px-2 py-0.5 text-xs font-semibold ${style}`}>
       {supportRequestStatusLabel(status)}

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { divIcon } from 'leaflet'
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
 import { OPENSTREETMAP_ATTRIBUTION, OPENSTREETMAP_TILE_URL } from './floodMapConfig'
-import { SUPPORT_STATUS_COLORS, supportRequestLocation, supportRequestStatusLabel, type SupportRequest } from '../services/supportNetwork'
+import { SUPPORT_STATUS_COLORS, isActiveSupportRequest, supportRequestLocation, supportRequestStatusLabel, type SupportRequest } from '../services/supportNetwork'
 
 function FitRequests({ points }: { points: [number, number][] }) {
   const map = useMap()
@@ -32,18 +32,23 @@ export default function SupportRequestsMap({ requests, onOpen, showResolved = fa
         <TileLayer attribution={OPENSTREETMAP_ATTRIBUTION} url={OPENSTREETMAP_TILE_URL} />
         <FitRequests points={[...groups.values()].map(group => group.point)} />
         {[...groups.entries()].map(([key, group]) => {
-          const newest = group.requests.find(request => request.status !== 'RESOLVED') ?? group.requests[0]
-          const label = `${newest.status === 'RESOLVED' ? '✓ RESOLVED' : 'HELP'} ${group.requests.length > 1 ? group.requests.length : ''}`.trim()
+          const newest = group.requests.find(isActiveSupportRequest) ?? group.requests[0]
+          const activeCount = group.requests.filter(isActiveSupportRequest).length
+          const cancelledCount = group.requests.filter(request => request.status === 'CANCELLED').length
+          const resolvedCount = group.requests.filter(request => request.status === 'RESOLVED').length
+          const label = [[activeCount, 'HELP'], [cancelledCount, 'CANCELLED'], [resolvedCount, '✓ RESOLVED']].filter(([count]) => Number(count) > 0).map(([count, text]) => `${text}${group.requests.length > 1 ? ` ${count}` : ''}`).join(' · ')
+          const width = label.length > 15 ? 190 : label.length > 7 ? 100 : 52
           return <Marker key={key} position={group.point} title={`${label}: ${supportRequestStatusLabel(newest.status)}`} icon={divIcon({
             className: 'support-help-pin',
             html: `<div style="background:${SUPPORT_STATUS_COLORS[newest.status]};color:white;border:2px solid white;border-radius:6px;box-shadow:0 1px 5px #334155;font:bold 11px sans-serif;padding:6px 3px;text-align:center;opacity:${newest.status === 'RESOLVED' ? '.7' : '1'}">${label}</div>`,
-            iconSize: [newest.status === 'RESOLVED' ? 100 : 52, 30], iconAnchor: [newest.status === 'RESOLVED' ? 50 : 26, 30],
+            iconSize: [width, 30], iconAnchor: [width / 2, 30],
           })}>
             <Popup><div className="max-h-72 space-y-3 overflow-y-auto">
               {group.requests.map(request => <div key={request.id} className="border-b pb-2">
                 <strong>{request.community.name}</strong>
                 <p>{request.community.township}, {request.community.region} · {group.point.join(', ')}</p>
                 <p>{request.assistanceCategories.join(', ')} · {supportRequestStatusLabel(request.status)}</p>
+                {request.status === 'CANCELLED' && <p>Cancelled by Community</p>}
                 <p>{request.assistancePeople ? `${request.assistancePeople.total} people need assistance` : 'Assistance count not recorded'}</p>
                 <p>Risk at submission: {request.riskLevel ?? 'Unavailable'}</p>
                 <p>{request.note}</p>
@@ -55,8 +60,8 @@ export default function SupportRequestsMap({ requests, onOpen, showResolved = fa
       </MapContainer>
     </div>
     <div className="flex flex-wrap gap-3 text-xs" aria-label="Help pin legend">
-      {(['PENDING', 'ACCEPTED', 'IN_PROGRESS', ...(showResolved ? ['RESOLVED' as const] : [])] as const).map(status => <span key={status}><span style={{ background: SUPPORT_STATUS_COLORS[status] }} className="mr-1 inline-block rounded px-1.5 py-1 font-bold text-white">{status === 'RESOLVED' ? '✓ RESOLVED' : 'HELP'}</span>{supportRequestStatusLabel(status)}</span>)}
+      {(['PENDING', 'ACCEPTED', 'IN_PROGRESS', 'CANCELLED', ...(showResolved ? ['RESOLVED' as const] : [])] as const).map(status => <span key={status}><span style={{ background: SUPPORT_STATUS_COLORS[status] }} className="mr-1 inline-block rounded px-1.5 py-1 font-bold text-white">{status === 'RESOLVED' ? '✓ RESOLVED' : status === 'CANCELLED' ? 'CANCELLED' : 'HELP'}</span>{supportRequestStatusLabel(status)}</span>)}
     </div>
-    <p className="text-xs text-gray-500">Only active requests appear by default. Select the Resolved status filter to show completed pins; archived requests are list-only history. HELP badges show request status, not flood hazard. Co-located requests share a badge prioritizing the newest active request; open it to inspect every visible request. {visible.filter(request => !supportRequestLocation(request)).length} requests have no valid location and remain in the list.</p>
+    <p className="text-xs text-gray-500">Active and cancelled requests appear by default so responders can see cancellations. Select the Resolved status filter to show completed pins; archived requests are list-only history. HELP badges show request status, not flood hazard. Co-located requests share a badge with separate active and cancelled counts; open it to inspect every visible request. {visible.filter(request => !supportRequestLocation(request)).length} requests have no valid location and remain in the list.</p>
   </section>
 }

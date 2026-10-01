@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react"
 import type { PrototypeRole } from '../services/prototypeSession'
+import type { CommunityData } from '../context/CommunityContext'
 import {
   loadSupportRequests,
   submitSupportRequest,
   subscribeSupportRequests,
   transitionSupportRequest,
   archiveSupportRequest,
+  cancelSupportRequest,
   type SupportRequestCreationInput,
   type SupportRequestStatus,
 } from "../services/supportNetwork"
@@ -40,5 +42,11 @@ export function useSupportRequests() {
     return request
   }, [refresh])
 
-  return { requests, submit, transition, archive, refresh }
+  const cancel = useCallback((id: string, role: PrototypeRole, community: Pick<CommunityData, 'name' | 'township' | 'region'>) => {
+    const request = cancelSupportRequest(id, role, community)
+    refresh()
+    return request
+  }, [refresh])
+
+  return { requests, submit, transition, archive, cancel, refresh }
 }

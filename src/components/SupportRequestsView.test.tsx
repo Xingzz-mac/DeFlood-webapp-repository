@@ -3,12 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import SupportRequestsView from './SupportRequestsView'
 import SupportRequestsMap from './SupportRequestsMap'
+import SupportNetwork from './SupportNetwork'
 import { archiveSupportRequest, buildSupportRequestDraft, submitSupportRequest, loadSupportRequests, transitionSupportRequest } from '../services/supportNetwork'
 import { DEMO_OPERATIONS_COMMUNITIES, DEMO_SCENARIOS } from '../services/demoScenarios'
 import { calculateEvacuationPlan } from '../services/evacuationEngine'
 import { useSupportRequests } from '../hooks/useSupportRequests'
 
 const map = vi.hoisted(() => ({ invalidateSize: vi.fn(), fitBounds: vi.fn() }))
+vi.mock('../context/CommunityContext', () => ({ useCommunity: () => ({ community: DEMO_OPERATIONS_COMMUNITIES[0].community, isSampleData: true }) }))
+vi.mock('../context/EvacuationContext', () => ({ useEvacuationPlan: () => {
+  const entry = DEMO_OPERATIONS_COMMUNITIES[0]
+  return calculateEvacuationPlan(entry.community, DEMO_SCENARIOS[entry.scenarioId].result, 'SAMPLE')
+} }))
 vi.mock('leaflet', () => ({ divIcon: (options: unknown) => options }))
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -31,6 +37,57 @@ describe('shared Support Requests list and map', () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) })
   })
   afterEach(() => vi.unstubAllGlobals())
+
+  it('confirms Community cancellation and immediately updates both responders and the map', async () => {
+    const request = seed()
+    expect(request.status).toBe('PENDING')
+    let community!: ReturnType<typeof create>
+    let ngo!: ReturnType<typeof create>
+    let government!: ReturnType<typeof create>
+    let mapView!: ReturnType<typeof create>
+    function LiveMap() {
+      const { requests } = useSupportRequests()
+      return <SupportRequestsMap requests={requests} onOpen={() => {}} />
+    }
+    await act(async () => {
+      community = create(<SupportNetwork role="leader" />)
+      ngo = create(<SupportRequestsView role="ngo" />)
+      government = create(<SupportRequestsView role="government" />)
+      mapView = create(<LiveMap />)
+    })
+    const click = async (renderer: ReturnType<typeof create>, label: string) => act(async () => renderer.root.findAllByType('button').find(button => button.children.includes(label))!.props.onClick())
+    await click(ngo, 'Acknowledge')
+    expect(loadSupportRequests()[0].status).toBe('ACCEPTED')
+    expect(community.root.findAllByType('button').some(b => ['Acknowledge', 'Start Response', 'Resolve'].some(label => b.children.includes(label)))).toBe(false)
+    await click(community, 'Cancel Request')
+    expect(JSON.stringify(community.toJSON())).toContain('Cancel this support request? Responders will be able to see that it was cancelled.')
+    await click(community, 'Keep Request')
+    expect(loadSupportRequests()[0].status).toBe('ACCEPTED')
+    await click(community, 'Cancel Request')
+    await click(community, 'Cancel Request')
+    expect(loadSupportRequests()[0]).toMatchObject({ id: request.id, status: 'CANCELLED' })
+    for (const renderer of [community, ngo, government, mapView]) expect(JSON.stringify(renderer.toJSON())).toContain('Cancelled by Community')
+    for (const renderer of [community, ngo, government]) expect(renderer.root.findAllByType('button').some(b => ['Acknowledge', 'Start Response', 'Resolve', 'Cancel Request'].some(label => b.children.includes(label)))).toBe(false)
+    const pins = () => mapView.root.findAllByType('div').filter(node => node.props['data-pin'])
+    expect(pins()).toHaveLength(1)
+    expect(pins()[0].props['data-pin']).toContain('CANCELLED')
+    expect(pins()[0].props['data-pin']).not.toContain('HELP')
+    expect(transitionSupportRequest(request.id, 'IN_PROGRESS')).toBeNull()
+    await act(async () => { seed() })
+    expect(pins()).toHaveLength(1)
+    expect(pins()[0].props['data-pin']).toContain('HELP 1 · CANCELLED 1')
+    await act(async () => { community.unmount(); ngo.unmount(); government.unmount(); mapView.unmount() })
+  })
+
+  it('offers no Community cancellation action for a resolved request', async () => {
+    const request = seed()
+    for (const status of ['ACCEPTED', 'IN_PROGRESS', 'RESOLVED'] as const) transitionSupportRequest(request.id, status)
+    let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<SupportNetwork role="leader" />) })
+    expect(JSON.stringify(renderer.toJSON())).toContain('Resolved')
+    expect(renderer.root.findAllByType('button').some(button => button.children.includes('Cancel Request'))).toBe(false)
+    await act(async () => renderer.unmount())
+  })
 
   it.each(['ngo', 'government'] as const)('shows the inclusive total without adding subgroups for %s or the map', async role => {
     seed()
