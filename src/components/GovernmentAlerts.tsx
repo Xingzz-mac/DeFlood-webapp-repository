@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Role } from '../App'
-import { ALERT_MESSAGES, ALERT_SEVERITIES, ALERT_TYPES, alertCommunityId, issueGovernmentAlert, loadGovernmentAlerts, type AlertCommunity, type GovernmentAlert } from '../services/governmentAlerts'
+import { ALERT_MESSAGES, ALERT_SEVERITIES, ALERT_TYPES, alertCommunityId, archiveGovernmentAlert, endGovernmentAlert, isActiveGovernmentAlert, subscribeGovernmentAlerts, issueGovernmentAlert, loadGovernmentAlerts, type AlertCommunity, type GovernmentAlert } from '../services/governmentAlerts'
 
 export interface AlertCandidate {
   community: AlertCommunity
@@ -10,6 +10,9 @@ export interface AlertCandidate {
 }
 export default function GovernmentAlerts({ role, candidates }: { role: Role; candidates: AlertCandidate[] }) {
   const [alerts, setAlerts] = useState(loadGovernmentAlerts)
+  useEffect(() => subscribeGovernmentAlerts(() => setAlerts(loadGovernmentAlerts())), [])
+  const [historyView, setHistoryView] = useState('active')
+  const visibleAlerts = alerts.filter(alert => historyView === 'archived' ? Boolean(alert.archivedAt) : historyView === 'ended' ? Boolean(alert.endedAt) && !alert.archivedAt : isActiveGovernmentAlert(alert))
   const [targets, setTargets] = useState<string[] | null>(null)
   const [type, setType] = useState<GovernmentAlert['type']>('Flood Warning')
   const [severity, setSeverity] = useState<GovernmentAlert['severity']>('Warning')
@@ -41,6 +44,27 @@ export default function GovernmentAlerts({ role, candidates }: { role: Role; can
       <div className="flex flex-wrap gap-3">{!preview ? <button type="button" disabled={!recipients.length || !message.trim()} onClick={() => setPreview(true)} className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-white disabled:opacity-50">Preview Alert</button> : <><button type="button" onClick={() => { try { const issued = issueGovernmentAlert(role, { type, severity, message, targets: recipients.map(c => ({ id: alertCommunityId(c.community), name: c.community.name })) }); setAlerts(loadGovernmentAlerts()); setTargets(null); setFeedback(`Alert Issued Successfully — ${issued.type} issued to ${issued.targets.length} communities.`) } catch (e) { setFeedback(e instanceof Error ? e.message : 'Alert could not be issued.') } }} className="rounded-lg bg-red-700 px-4 py-2 text-white">Send Alert</button><button type="button" onClick={() => setPreview(false)}>Edit Alert</button></>}<button type="button" onClick={() => setTargets(null)}>Cancel</button></div>
     </section>}
     {feedback && <p role="status" className="rounded-lg border p-3 text-sm">{feedback}</p>}
-    <section aria-label="Recent Alerts" className="rounded-2xl border border-gray-200 bg-white p-4 md:p-5"><h2 className="text-lg font-bold text-[#1e3a5f]">Recent Alerts</h2>{!alerts.length && <p className="mt-2 text-sm text-gray-500">No alerts issued yet.</p>}{alerts.slice(0, 10).map(a => <article key={a.id} className="mt-3 rounded-lg border p-3"><strong>{a.type} · {a.severity}</strong><p className="text-xs text-gray-500">Issued · {new Date(a.issuedAt).toLocaleString()}</p><p className="text-sm">{a.targets.map(t => t.name).join(', ')}</p><details className="mt-2 text-sm"><summary className="cursor-pointer text-blue-800">View message</summary><p className="mt-2 whitespace-pre-wrap break-words">{a.message}</p></details></article>)}</section>
+    <section aria-label="Recent Alerts" className="rounded-2xl border border-gray-200 bg-white p-4 md:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-[#1e3a5f]">Recent Alerts</h2>
+        <label className="text-sm">Show<select aria-label="Alert history filter" value={historyView} onChange={e => setHistoryView(e.target.value)} className="ml-2 rounded-lg border p-2"><option value="active">Active</option><option value="ended">Ended</option><option value="archived">Archived</option></select></label>
+      </div>
+      {!visibleAlerts.length && <p className="mt-2 text-sm text-gray-500">No alerts in this view.</p>}
+      {visibleAlerts.map(a => <article key={a.id} className="mt-3 rounded-lg border p-3">
+        <strong>{a.type} · {a.severity}</strong><span className="ml-2 rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">{a.archivedAt ? 'Archived' : a.endedAt ? 'Ended' : 'Active'}</span>
+        <p className="mt-2 text-xs text-gray-500">Issued · {new Date(a.issuedAt).toLocaleString()}</p>
+        {a.endedAt && <p className="text-xs text-gray-500">Ended · {new Date(a.endedAt).toLocaleString()}</p>}
+        {a.archivedAt && <p className="text-xs text-gray-500">Archived · {new Date(a.archivedAt).toLocaleString()}</p>}
+        <p className="text-sm">{a.targets.map(t => t.name).join(', ')}</p>
+        <details className="mt-2 text-sm"><summary className="cursor-pointer text-blue-800">View message</summary><p className="mt-2 whitespace-pre-wrap break-words">{a.message}</p></details>
+        {!a.archivedAt && <button type="button" className="mt-3 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700" onClick={() => {
+          try {
+            const updated = a.endedAt ? archiveGovernmentAlert(a.id, role) : endGovernmentAlert(a.id, role)
+            if (!updated) throw new Error('Alert changed. Review its latest state.')
+            setFeedback(a.endedAt ? 'Alert archived. The issued record remains in history.' : 'Alert ended. It is no longer shown as a current community warning.')
+          } catch (e) { setFeedback(e instanceof Error ? e.message : 'Alert could not be changed.') }
+        }}>{a.endedAt ? 'Archive' : 'End Alert'}</button>}
+      </article>)}
+    </section>
   </section>
 }

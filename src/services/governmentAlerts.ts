@@ -13,6 +13,8 @@ export interface GovernmentAlert {
   message: string
   issuedAt: string
   status: 'ISSUED'
+  endedAt?: string
+  archivedAt?: string
 }
 // Matches the existing Support Network community identity convention.
 export function alertCommunityId(community: AlertCommunity): string {
@@ -36,5 +38,46 @@ export function issueGovernmentAlert(role: PrototypeRole, draft: Pick<Government
   if (!ALERT_TYPES.includes(draft.type) || !ALERT_SEVERITIES.includes(draft.severity) || !draft.targets.length || draft.targets.some(t => !t.id || !t.name) || !draft.message.trim() || draft.message.length > 2000) throw new Error('Select recipients and enter a message of 1–2000 characters.')
   const alert: GovernmentAlert = { ...draft, targets: [...new Map(draft.targets.map(t => [t.id, { ...t }])).values()], message: draft.message.trim(), id: crypto.randomUUID(), issuedAt: new Date().toISOString(), status: 'ISSUED' }
   try { localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify([alert, ...loadGovernmentAlerts()])) } catch { throw new Error('Local storage is unavailable or full. Alert was not issued.') }
+  notifyAlertListeners()
   return alert
+}
+
+export function isActiveGovernmentAlert(alert: GovernmentAlert): boolean {
+  return !alert.endedAt && !alert.archivedAt
+}
+
+export function endGovernmentAlert(id: string, role: PrototypeRole): GovernmentAlert | null {
+  return updateAlertLifecycle(id, role, 'endedAt')
+}
+
+export function archiveGovernmentAlert(id: string, role: PrototypeRole): GovernmentAlert | null {
+  return updateAlertLifecycle(id, role, 'archivedAt')
+}
+
+function updateAlertLifecycle(id: string, role: PrototypeRole, field: 'endedAt' | 'archivedAt'): GovernmentAlert | null {
+  if (role !== 'government') throw new Error('Only the Government role can end or archive alerts.')
+  const alerts = loadGovernmentAlerts()
+  const current = alerts.find(alert => alert.id === id)
+  if (!current || current.archivedAt || (field === 'endedAt' ? current.endedAt : !current.endedAt)) return null
+  const updated = { ...current, [field]: new Date().toISOString() }
+  try { localStorage.setItem(ALERT_STORAGE_KEY, JSON.stringify(alerts.map(alert => alert.id === id ? updated : alert))) } catch { throw new Error('Local storage is unavailable or full. Alert was not changed.') }
+  notifyAlertListeners()
+  return updated
+}
+
+const alertListeners = new Set<() => void>()
+function notifyAlertListeners() {
+  alertListeners.forEach(listener => listener())
+}
+
+export function subscribeGovernmentAlerts(listener: () => void): () => void {
+  alertListeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === ALERT_STORAGE_KEY || event.key === null) listener()
+  }
+  if (typeof window !== 'undefined') window.addEventListener('storage', onStorage)
+  return () => {
+    alertListeners.delete(listener)
+    if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage)
+  }
 }
