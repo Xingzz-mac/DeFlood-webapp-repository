@@ -15,7 +15,7 @@ export default function SupportRequestsView({ role }: { role: Role }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const filtered = [...requests].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).filter(request =>
-    (status === 'archived' ? Boolean(request.archivedAt) : !request.archivedAt && (status === 'all' || (status === 'active' ? request.status !== 'RESOLVED' : request.status === status))) &&
+    (status === 'archived' ? Boolean(request.archivedAt) : !request.archivedAt && (status === 'all' || (status === 'active' ? isActiveSupportRequest(request) : request.status === status))) &&
     (assistance === 'all' || request.assistanceCategories.some(category => category === assistance)) &&
     (risk === 'all' || request.riskLevel === risk))
   const selected = filtered.find(request => request.id === selectedId) ?? filtered[0]
@@ -37,15 +37,15 @@ export default function SupportRequestsView({ role }: { role: Role }) {
     </section>
     <p className="text-xs text-gray-500">{newCount} new {newCount === 1 ? 'request' : 'requests'}. People totals sum recorded request counts, including resolved requests; repeated requests may overlap. Older requests without a help count are excluded. Risk is the recorded assessment at submission.</p>
     <div className="flex flex-wrap gap-3">
-      <label className="text-sm">Status<select aria-label="Request status filter" value={status} onChange={e => { setStatus(e.target.value); setArchiveId(null) }} className="ml-2 rounded-lg border p-2"><option value="active">Active / Cancelled</option><option value="all">All unarchived</option>{(['PENDING','ACCEPTED','IN_PROGRESS','RESOLVED','CANCELLED'] as const).map(s => <option key={s} value={s}>{supportRequestStatusLabel(s)}</option>)}<option value="archived">Archived / History</option></select></label>
+      <label className="text-sm">Status<select aria-label="Request status filter" value={status} onChange={e => { setStatus(e.target.value); setArchiveId(null) }} className="ml-2 rounded-lg border p-2"><option value="active">Active</option><option value="all">All unarchived</option>{(['PENDING','ACCEPTED','IN_PROGRESS','RESOLVED','CANCELLED'] as const).map(s => <option key={s} value={s}>{supportRequestStatusLabel(s)}</option>)}<option value="archived">Archived / History</option></select></label>
       <label className="text-sm">Assistance<select aria-label="Assistance filter" value={assistance} onChange={e => setAssistance(e.target.value)} className="ml-2 rounded-lg border p-2"><option value="all">All</option>{ASSISTANCE_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label>
       <label className="text-sm">Risk<select aria-label="Risk filter" value={risk} onChange={e => setRisk(e.target.value)} className="ml-2 rounded-lg border p-2"><option value="all">All</option>{['HIGH','MEDIUM','LOW'].map(r => <option key={r}>{r}</option>)}</select></label>
     </div>
     <div className="flex gap-2">{['requests','map'].map(tab => <button key={tab} type="button" aria-pressed={view === tab} onClick={() => setView(tab)} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === tab ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-700'}`}>{tab === 'map' ? 'Map' : 'Requests'}</button>)}</div>
-    {view === 'map' ? <Suspense fallback={<p>Loading request map…</p>}><SupportRequestsMap requests={filtered} showResolved={status === 'RESOLVED'} onOpen={id => { setSelectedId(id); setView('requests') }} /></Suspense> :
+    {view === 'map' ? <Suspense fallback={<p>Loading request map…</p>}><SupportRequestsMap requests={filtered} showResolved={status === 'RESOLVED'} showCancelled={status === 'CANCELLED' || status === 'all'} onOpen={id => { setSelectedId(id); setView('requests') }} /></Suspense> :
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <section aria-label="Submitted requests" className="space-y-3">
-          {!filtered.length && <p className="rounded-xl border border-dashed p-6 text-gray-500">No requests match these filters. Choose Resolved or Archived / History to inspect completed requests.</p>}
+          {!filtered.length && <p className="rounded-xl border border-dashed p-6 text-gray-500">No requests match these filters. Choose Resolved, Cancelled, or Archived / History to inspect completed requests.</p>}
           {filtered.map(request => <button key={request.id} type="button" onClick={() => setSelectedId(request.id)} className={`block w-full rounded-xl border p-4 text-left ${request.id === selected?.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'}`}>
             <strong>{request.community.name}</strong><span className="ml-2 rounded px-2 py-1 text-xs font-bold text-white" style={{ background: SUPPORT_STATUS_COLORS[request.status] }}>{supportRequestStatusLabel(request.status)}</span>
             <p className="mt-2 text-sm">{request.assistanceCategories.join(', ')} · {request.assistancePeople ? `${request.assistancePeople.total} people need assistance` : 'Assistance count not recorded'} · {request.riskLevel ?? 'Unknown'} risk at submission</p>
@@ -91,11 +91,12 @@ export default function SupportRequestsView({ role }: { role: Role }) {
           <h3 className="text-sm font-semibold text-[#1e3a5f]">Response</h3>
           <p className="text-sm text-gray-600">Responder status: <span className="font-medium text-gray-900">{selected.status === 'CANCELLED' ? 'Cancelled by Community' : selected.responderLabel ? `${supportRequestStatusLabel(selected.status)}` : 'Not acknowledged'}</span></p>
           {selected.status === 'RESOLVED' && <p className="text-sm text-green-800">Complete — no further response required.{selected.archivedAt ? ` Archived: ${new Date(selected.archivedAt).toLocaleString()}. Read-only history.` : ''}</p>}
+          {selected.archivedAt && selected.status === 'CANCELLED' && <p className="text-xs text-gray-500">Archived: {new Date(selected.archivedAt).toLocaleString()}. Read-only history.</p>}
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-          {role === 'ngo' && selected.status === 'RESOLVED' && !selected.archivedAt && <>
+          {role === 'ngo' && (selected.status === 'RESOLVED' || selected.status === 'CANCELLED') && !selected.archivedAt && <>
             <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm" onClick={() => { setArchiveId(selected.id); setError(null) }}>Archive Request</button>
             {archiveId === selected.id && <section aria-label="Confirm archive" className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <h3 className="font-semibold">Archive this resolved request?</h3><p className="text-sm">This will remove it from active operations and the default map. The request will remain available in history.</p>
+              <h3 className="font-semibold">Archive this completed request?</h3><p className="text-sm">This will remove it from active operations and the default map. The request will remain available in history.</p>
               <button type="button" className="mr-3 text-sm" onClick={() => setArchiveId(null)}>Cancel</button>
               <button type="button" className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm text-white" onClick={() => { try { if (!archive(selected.id, role)) throw new Error('Request changed. Review its latest status.'); setArchiveId(null); setError(null) } catch (e) { setError(e instanceof Error ? e.message : 'Archive failed.') } }}>Archive</button>
             </section>}

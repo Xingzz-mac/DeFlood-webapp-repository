@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import SupportRequestsView from './SupportRequestsView'
 import SupportRequestsMap from './SupportRequestsMap'
 import SupportNetwork from './SupportNetwork'
-import { archiveSupportRequest, buildSupportRequestDraft, submitSupportRequest, loadSupportRequests, transitionSupportRequest } from '../services/supportNetwork'
+import { archiveSupportRequest, cancelSupportRequest, buildSupportRequestDraft, submitSupportRequest, loadSupportRequests, transitionSupportRequest } from '../services/supportNetwork'
 import { DEMO_OPERATIONS_COMMUNITIES, DEMO_SCENARIOS } from '../services/demoScenarios'
 import { calculateEvacuationPlan } from '../services/evacuationEngine'
 import { useSupportRequests } from '../hooks/useSupportRequests'
@@ -38,7 +38,7 @@ describe('shared Support Requests list and map', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('confirms Community cancellation and immediately updates both responders and the map', async () => {
+  it('keeps cancellation in explicit status views while removing it from default active lists', async () => {
     const request = seed()
     expect(request.status).toBe('PENDING')
     let community!: ReturnType<typeof create>
@@ -47,7 +47,7 @@ describe('shared Support Requests list and map', () => {
     let mapView!: ReturnType<typeof create>
     function LiveMap() {
       const { requests } = useSupportRequests()
-      return <SupportRequestsMap requests={requests} onOpen={() => {}} />
+      return <SupportRequestsMap requests={requests} showCancelled onOpen={() => {}} />
     }
     await act(async () => {
       community = create(<SupportNetwork role="leader" />)
@@ -66,6 +66,10 @@ describe('shared Support Requests list and map', () => {
     await click(community, 'Cancel Request')
     await click(community, 'Cancel Request')
     expect(loadSupportRequests()[0]).toMatchObject({ id: request.id, status: 'CANCELLED' })
+    for (const renderer of [ngo, government]) {
+      expect(renderer.root.findAllByProps({ 'aria-label': 'Request details' })).toHaveLength(0)
+      await act(async () => renderer.root.findByProps({ 'aria-label': 'Request status filter' }).props.onChange({ target: { value: 'CANCELLED' } }))
+    }
     for (const renderer of [community, ngo, government, mapView]) expect(JSON.stringify(renderer.toJSON())).toContain('Cancelled by Community')
     for (const renderer of [community, ngo, government]) expect(renderer.root.findAllByType('button').some(b => ['Acknowledge', 'Start Response', 'Resolve', 'Cancel Request'].some(label => b.children.includes(label)))).toBe(false)
     const pins = () => mapView.root.findAllByType('div').filter(node => node.props['data-pin'])
@@ -86,6 +90,44 @@ describe('shared Support Requests list and map', () => {
     await act(async () => { renderer = create(<SupportNetwork role="leader" />) })
     expect(JSON.stringify(renderer.toJSON())).toContain('Resolved')
     expect(renderer.root.findAllByType('button').some(button => button.children.includes('Cancel Request'))).toBe(false)
+    await act(async () => renderer.unmount())
+  })
+
+  it.each(['RESOLVED', 'CANCELLED'] as const)('lets the owner archive %s without losing shared history or other records', async status => {
+    const request = seed()
+    const owner = DEMO_OPERATIONS_COMMUNITIES[0].community
+    if (status === 'CANCELLED') cancelSupportRequest(request.id, 'leader', owner)
+    else for (const next of ['ACCEPTED', 'IN_PROGRESS', 'RESOLVED'] as const) transitionSupportRequest(request.id, next)
+    const completed = loadSupportRequests()[0]
+    const other = seed()
+    let renderer!: ReturnType<typeof create>
+    await act(async () => { renderer = create(<SupportNetwork role="leader" />) })
+    expect(renderer.root.findAllByType('button').filter(b => b.children.includes('Archive'))).toHaveLength(1)
+    await act(async () => renderer.root.findAllByType('button').find(b => b.children.includes('Archive'))!.props.onClick())
+    expect(JSON.stringify(renderer.toJSON())).not.toContain(request.id)
+    expect(loadSupportRequests().find(r => r.id === other.id)).toEqual(other)
+    const { archivedAt, ...unchanged } = loadSupportRequests().find(r => r.id === request.id)!
+    expect(archivedAt).toBeTruthy()
+    expect(unchanged).toEqual(completed)
+    await act(async () => renderer.unmount())
+    await act(async () => { renderer = create(<SupportNetwork role="leader" />) })
+    await act(async () => renderer.root.findAllByType('button').find(b => b.children.includes('Archived'))!.props.onClick())
+    expect(JSON.stringify(renderer.toJSON())).toContain(request.id)
+    expect(renderer.root.findAllByType('button').some(b => b.children.includes('Archive') || b.children.includes('Cancel Request'))).toBe(false)
+    await act(async () => renderer.unmount())
+    for (const role of ['ngo', 'government'] as const) {
+      await act(async () => { renderer = create(<SupportRequestsView role={role} />) })
+      expect(JSON.stringify(renderer.toJSON())).not.toContain(request.id)
+      await act(async () => renderer.root.findByProps({ 'aria-label': 'Request status filter' }).props.onChange({ target: { value: 'archived' } }))
+      expect(JSON.stringify(renderer.toJSON())).toContain(request.id)
+      expect(renderer.root.findAllByType('button').some(b => ['Archive Request', 'Acknowledge', 'Start Response', 'Resolve'].some(label => b.children.includes(label)))).toBe(false)
+      await act(async () => renderer.unmount())
+    }
+    await act(async () => { renderer = create(<SupportRequestsMap requests={loadSupportRequests()} showResolved showCancelled onOpen={() => {}} />) })
+    const pins = renderer.root.findAllByType('div').filter(node => node.props['data-pin'])
+    expect(pins).toHaveLength(1)
+    expect(pins[0].props['data-pin']).not.toContain('CANCELLED')
+    expect(pins[0].props['data-pin']).not.toContain('RESOLVED')
     await act(async () => renderer.unmount())
   })
 

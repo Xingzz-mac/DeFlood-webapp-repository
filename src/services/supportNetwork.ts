@@ -184,7 +184,7 @@ function parseStoredRequest(value: unknown): SupportRequest | null {
 
   return {
     id,
-    ...(status === 'RESOLVED' && validIsoDate(record.archivedAt) ? { archivedAt: validIsoDate(record.archivedAt)! } : {}),
+    ...((status === 'RESOLVED' || status === 'CANCELLED') && validIsoDate(record.archivedAt) ? { archivedAt: validIsoDate(record.archivedAt)! } : {}),
     ...(validAssistancePeople(record.assistancePeople) ? { assistancePeople: record.assistancePeople } : {}),
     ...(validRequestLocation(record.requestLocation) ? { requestLocation: record.requestLocation } : {}),
     createdAt,
@@ -430,16 +430,17 @@ export function cancelSupportRequest(
 }
 
 export function isActiveSupportRequest(request: SupportRequest): boolean {
-  return request.status === 'PENDING' || request.status === 'ACCEPTED' || request.status === 'IN_PROGRESS'
+  return !request.archivedAt && (request.status === 'PENDING' || request.status === 'ACCEPTED' || request.status === 'IN_PROGRESS')
 }
 
-export function archiveSupportRequest(id: string, role: PrototypeRole, options: Pick<RequestOptions, 'storage' | 'now'> = {}): SupportRequest | null {
-  if (role !== 'ngo') throw new Error('Only the NGO role can archive resolved requests.')
+export function archiveSupportRequest(id: string, role: PrototypeRole, options: Pick<RequestOptions, 'storage' | 'now'> & { community?: Pick<CommunityData, 'name' | 'township' | 'region'> } = {}): SupportRequest | null {
+  if (role !== 'ngo' && !(role === 'leader' && options.community)) throw new Error('Only NGO or the owning Community Leader can archive completed requests.')
   const storage = options.storage === undefined ? currentStorage() : options.storage
   const requests = loadSupportRequests(storage)
   const current = requests.find(request => request.id === id)
-  if (!current || current.status !== 'RESOLVED' || current.archivedAt) return null
-  // Preserve updatedAt: for resolved records it records the final response update.
+  if (!current || (current.status !== 'RESOLVED' && current.status !== 'CANCELLED') || current.archivedAt) return null
+  if (role === 'leader' && !requestBelongsToCommunity(current, options.community!)) return null
+  // Preserve updatedAt: it records the final response or cancellation update.
   const archived = { ...current, archivedAt: (options.now ?? (() => new Date()))().toISOString() }
   if (!saveSupportRequests(requests.map(request => request.id === id ? archived : request), storage)) throw new Error('Local storage is unavailable or full. The request was not archived.')
   return archived

@@ -30,7 +30,8 @@ export default function SupportNetwork({ role }: { role: Role }) {
 function CommunitySupportNetwork({ role }: { role: Role }) {
   const plan = useEvacuationPlan()
   const { community } = useCommunity()
-  const { requests, submit, cancel } = useSupportRequests()
+  const { requests, submit, cancel, archive } = useSupportRequests()
+  const [showArchived, setShowArchived] = useState(false)
   const [draft, setDraft] = useState<SupportRequestDraft | null>(null)
   const [selectedCategories, setSelectedCategories] =
     useState<AssistanceCategory[]>([])
@@ -54,9 +55,9 @@ function CommunitySupportNetwork({ role }: { role: Role }) {
   const communityRequests = useMemo(
     () =>
       requests.filter((request) =>
-        requestBelongsToCommunity(request, community),
+        requestBelongsToCommunity(request, community) && Boolean(request.archivedAt) === showArchived,
       ),
-    [community, requests],
+    [community, requests, showArchived],
   )
 
   const prepareRequest = () => {
@@ -393,6 +394,9 @@ function CommunitySupportNetwork({ role }: { role: Role }) {
             {communityRequests.length}
           </span>
         </div>
+        <div className="mb-3 flex gap-2">
+          {[false, true].map(archived => <button key={String(archived)} type="button" aria-pressed={showArchived === archived} onClick={() => setShowArchived(archived)} className={`rounded-lg px-3 py-2 text-sm ${showArchived === archived ? 'bg-[#1e3a5f] text-white' : 'bg-gray-100 text-gray-700'}`}>{archived ? 'Archived' : 'My Requests'}</button>)}
+        </div>
         {communityRequests.length > 0 ? (
           <div className="space-y-3">
             {communityRequests.map((request) => (
@@ -403,12 +407,15 @@ function CommunitySupportNetwork({ role }: { role: Role }) {
                 onCancel={() => {
                   if (!cancel(request.id, role, community)) throw new Error('Request changed. Review its latest status.')
                 }}
+                onArchive={role === 'leader' ? () => {
+                  if (!archive(request.id, role, community)) throw new Error('Request changed. Review its latest status.')
+                } : undefined}
               />
             ))}
           </div>
         ) : (
           <div className="rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-7 text-center text-sm text-gray-500">
-            No support requests have been submitted for this community.
+            {showArchived ? 'No archived requests for this community.' : 'No unarchived requests for this community.'}
           </div>
         )}
       </section>
@@ -421,13 +428,16 @@ function RequestCard({
   request,
   highlighted,
   onCancel,
+  onArchive,
 }: {
   request: SupportRequest
   highlighted: boolean
   onCancel: () => void
+  onArchive?: () => void
 }) {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   return (
     <article
       className={`rounded-2xl border bg-white p-5 ${
@@ -513,6 +523,12 @@ function RequestCard({
           {cancelError && <p role="alert" className="mt-2 text-sm text-red-700">{cancelError}</p>}
         </div>
       )}
+      {request.archivedAt && <p className="mt-3 text-xs text-gray-500">Archived {formatDateTime(request.archivedAt)} · Read-only history</p>}
+      {onArchive && !request.archivedAt && (request.status === 'RESOLVED' || request.status === 'CANCELLED') && <div className="mt-4">
+        <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700" onClick={() => { try { onArchive(); setArchiveError(null) } catch (e) { setArchiveError(e instanceof Error ? e.message : 'Request could not be archived.') } }}>Archive</button>
+        <p className="mt-1 text-xs text-gray-500">Moves this request out of normal views; the record remains in history.</p>
+        {archiveError && <p role="alert" className="mt-2 text-sm text-red-700">{archiveError}</p>}
+      </div>}
     </article>
   )
 }

@@ -36,8 +36,8 @@ export function useSupportRequests() {
     [refresh],
   )
 
-  const archive = useCallback((id: string, role: PrototypeRole) => {
-    const request = archiveSupportRequest(id, role)
+  const archive = useCallback((id: string, role: PrototypeRole, community?: Pick<CommunityData, 'name' | 'township' | 'region'>) => {
+    const request = archiveSupportRequest(id, role, { community })
     refresh()
     return request
   }, [refresh])

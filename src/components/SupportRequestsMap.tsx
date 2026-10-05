@@ -14,8 +14,8 @@ function FitRequests({ points }: { points: [number, number][] }) {
   return null
 }
 
-export default function SupportRequestsMap({ requests, onOpen, showResolved = false }: { requests: SupportRequest[]; onOpen: (id: string) => void; showResolved?: boolean }) {
-  const visible = requests.filter(request => !request.archivedAt && (request.status !== 'RESOLVED' || showResolved)).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+export default function SupportRequestsMap({ requests, onOpen, showResolved = false, showCancelled = false }: { requests: SupportRequest[]; onOpen: (id: string) => void; showResolved?: boolean; showCancelled?: boolean }) {
+  const visible = requests.filter(request => !request.archivedAt && (isActiveSupportRequest(request) || (request.status === 'RESOLVED' && showResolved) || (request.status === 'CANCELLED' && showCancelled))).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
   const groups = new Map<string, { point: [number, number]; requests: SupportRequest[] }>()
   for (const request of visible) {
     const location = supportRequestLocation(request)
@@ -60,8 +60,8 @@ export default function SupportRequestsMap({ requests, onOpen, showResolved = fa
       </MapContainer>
     </div>
     <div className="flex flex-wrap gap-3 text-xs" aria-label="Help pin legend">
-      {(['PENDING', 'ACCEPTED', 'IN_PROGRESS', 'CANCELLED', ...(showResolved ? ['RESOLVED' as const] : [])] as const).map(status => <span key={status}><span style={{ background: SUPPORT_STATUS_COLORS[status] }} className="mr-1 inline-block rounded px-1.5 py-1 font-bold text-white">{status === 'RESOLVED' ? '✓ RESOLVED' : status === 'CANCELLED' ? 'CANCELLED' : 'HELP'}</span>{supportRequestStatusLabel(status)}</span>)}
+      {(['PENDING', 'ACCEPTED', 'IN_PROGRESS', ...(showCancelled ? ['CANCELLED' as const] : []), ...(showResolved ? ['RESOLVED' as const] : [])] as const).map(status => <span key={status}><span style={{ background: SUPPORT_STATUS_COLORS[status] }} className="mr-1 inline-block rounded px-1.5 py-1 font-bold text-white">{status === 'RESOLVED' ? '✓ RESOLVED' : status === 'CANCELLED' ? 'CANCELLED' : 'HELP'}</span>{supportRequestStatusLabel(status)}</span>)}
     </div>
-    <p className="text-xs text-gray-500">Active and cancelled requests appear by default so responders can see cancellations. Select the Resolved status filter to show completed pins; archived requests are list-only history. HELP badges show request status, not flood hazard. Co-located requests share a badge with separate active and cancelled counts; open it to inspect every visible request. {visible.filter(request => !supportRequestLocation(request)).length} requests have no valid location and remain in the list.</p>
+    <p className="text-xs text-gray-500">Only active requests appear by default. Select the Resolved or Cancelled status filter to inspect completed pins; archived requests are list-only history. HELP badges show request status, not flood hazard. Co-located requests share a badge with separate active and cancelled counts; open it to inspect every visible request. {visible.filter(request => !supportRequestLocation(request)).length} requests have no valid location and remain in the list.</p>
   </section>
 }

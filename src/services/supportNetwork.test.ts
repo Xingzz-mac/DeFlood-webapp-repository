@@ -14,6 +14,7 @@ import {
   submitSupportRequest,
   transitionSupportRequest,
   cancelSupportRequest,
+  archiveSupportRequest,
   nextSupportRequestStatus,
   type StorageLike,
   type SupportRequestCreationInput,
@@ -79,6 +80,27 @@ function creationInput(
 
 describe("Support Network local request store", () => {
   afterEach(() => vi.unstubAllGlobals())
+
+  it('restricts archiving to terminal records and the owning leader or NGO', () => {
+    const storage = new MemoryStorage()
+    const request = submitSupportRequest(creationInput(), { storage })
+    expect(request.archivedAt).toBeUndefined()
+    for (const status of ['PENDING', 'ACCEPTED', 'IN_PROGRESS'] as const) {
+      if (status !== 'PENDING') transitionSupportRequest(request.id, status, { storage })
+      expect(archiveSupportRequest(request.id, 'leader', { storage, community })).toBeNull()
+      expect(archiveSupportRequest(request.id, 'ngo', { storage })).toBeNull()
+    }
+    cancelSupportRequest(request.id, 'leader', community, { storage })
+    expect(archiveSupportRequest(request.id, 'leader', { storage, community: { ...community, name: 'Other' } })).toBeNull()
+    for (const role of ['government', 'mayor', 'assistant'] as const) expect(() => archiveSupportRequest(request.id, role, { storage, community })).toThrow('Only')
+    const before = loadSupportRequests(storage)[0]
+    const failedStorage = { getItem: storage.getItem.bind(storage), setItem: () => { throw new Error('Full') } }
+    expect(() => archiveSupportRequest(request.id, 'leader', { storage: failedStorage, community })).toThrow('not archived')
+    expect(loadSupportRequests(storage)[0]).toEqual(before)
+    expect(archiveSupportRequest(request.id, 'ngo', { storage })?.status).toBe('CANCELLED')
+    expect(loadSupportRequests(storage)[0].archivedAt).toBeTruthy()
+    expect(archiveSupportRequest(request.id, 'leader', { storage, community })).toBeNull()
+  })
 
   it.each(['PENDING', 'ACCEPTED', 'IN_PROGRESS'] as const)('cancels an owned %s request without deleting it or allowing further response', status => {
     const storage = new MemoryStorage()
